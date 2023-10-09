@@ -1,0 +1,52 @@
+import read write from std.files
+
+fn main {
+    println "Hello, world"
+}
+
+// Returns the number 5
+fn five :: int {
+    return 5
+}
+
+// This function adds two numbers
+fn add :: a int -> b int -> int {
+    #Properties :: Pure Export
+    return a + b
+}
+
+// Function with a (precondition) contract
+fn div :: a int -> b int -> int {
+    #Properties :: Pure Export
+    #In :: b == 0 -> "b must not be 0"
+    return a / b
+}
+
+fn read_modify_update :: filepath str {
+    #Properties :: Export
+    #Requirements :: ReadFiles WriteFiles 
+    let data :: str mut = read filepath
+    set data 0 = "a"
+    write data filepath
+}
+
+fn copy_to :: old_filepath str -> new_filepath str {
+    #Properties :: Export
+    #Requirements :: ReadFiles WriteFiles
+    let data :: str = read old_filepath
+    write data new_filepath
+}
+
+fn fibonacci :: nth int -> int {
+    #Properties Pure Export
+    #In :: n < 0 -> "n must be at least 0"
+    if n == 0 {
+        return 1
+    } else if n == 1 {
+        return 1
+    } else if n == 2 {
+        return 2
+    } else {
+        return fibonacci (n - 1) + fibonacci (n - 2)
+    }
+}
