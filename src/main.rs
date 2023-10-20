@@ -5,6 +5,7 @@ use std::error::Error;
 use std::fs;
 
 mod lex;
+mod grammars;
 mod parse;
 mod properties;
 
