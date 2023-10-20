@@ -1,4 +1,5 @@
 use crate::lex::{Symbol, Token};
+use crate::properties;
 
 /// Object represents something that has been parsed
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,10 +34,14 @@ struct Variable {
 
 /// The grammar for declaring a function -> a big state machine
 /// 
-/// Stages
+/// #### Stages
+/// 
 ///     0: Initialized
+/// 
 ///     1: Name processed, seeking :: or {
+/// 
 ///     2: :: processed, seeking arguments
+/// 
 ///     3: arguments complete, seeking {
 struct GrammarFunctionDeclaration {
     is_valid: bool,
@@ -174,6 +179,78 @@ impl GrammarFunctionDeclaration {
         }
         // Update symbol register
         self.last_symbol = next.symbol;
+        return error_message;
+    }
+}
+
+struct GrammarProperties {
+    is_valid: bool,
+    done: bool,
+    stage: u8,
+    last_symbol: Symbol,
+    p_list: Vec<properties::Properties>
+}
+
+impl GrammarProperties {
+    fn new() -> GrammarProperties {
+        GrammarProperties { 
+            is_valid: true, 
+            done: false,
+            stage: 0,
+            last_symbol: Symbol::PropertyDeclaration, 
+            p_list: Vec::<properties::Properties>::new(),
+        }
+    }
+
+    /// Iterate through the line
+    /// 
+    /// Stages:
+    /// 
+    /// 0. Begin, expect semi-colon
+    /// 1. Has double colon, expect values or new line
+    fn step(&mut self, next: Token) -> Option<String> {
+        let mut error_message: Option<String> = None;
+        match self.stage {
+            0 => {
+                match next.symbol {
+                    Symbol::DoubleColon => {
+                        self.stage = 1;
+                    },
+                    _ => {
+                        self.is_valid = false;
+                        self.done = true;
+                        error_message = Some(format!("Property list declared on line {} is invalid. Should be `#Properties :: A B C`.", next.line));
+                    }
+                }
+            },
+            1 => {
+                match next.symbol {
+                    Symbol::Value => {
+                        match next.text.as_str() {
+                            "Pure" => self.p_list.push(properties::Properties::Pure),
+                            "Export" => self.p_list.push(properties::Properties::Export),
+                            _ => {
+                                self.is_valid = false;
+                                self.done = true;
+                                error_message = Some(format!("Property list declared on line {} is invalid. Unrecognized property {}. Valid properties are:\n{:?}", next.line, next.text, properties::PROPERTY_LIST));
+                            }
+                        }
+                    },
+                    Symbol::Newline => {
+                        if self.p_list.len() == 0 {
+                            println!("Warning: empty property list. A property list was declared on line {}, but no properties were provided.", next.line);
+                        }
+                        self.done = true;
+                    },
+                    _ => {
+                        self.is_valid = false;
+                        self.done = true;
+                        error_message = Some(format!("Property list declared on line {} is invalid. Expected a valid property name or a new line, but received an unexpected token instead. The offending token is {}, which has symbol {:?}.", next.line, next.text, next.symbol));
+                    }
+                }
+            },
+            _ => ()
+        }
         return error_message;
     }
 }

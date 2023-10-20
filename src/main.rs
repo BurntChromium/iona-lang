@@ -6,6 +6,7 @@ use std::fs;
 
 mod lex;
 mod parse;
+mod properties;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Capture command line
