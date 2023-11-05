@@ -8,6 +8,13 @@ use crate::properties;
 
 // -------------------- Grammar: Functions --------------------
 
+enum GFDStages {
+    Initialized,
+    NameProcessed,
+    SeekingArguments,
+    SeekingBracket
+}
+
 /// The grammar for declaring a function -> a big state machine
 /// 
 /// #### Stages
@@ -22,7 +29,7 @@ use crate::properties;
 struct GrammarFunctionDeclaration {
     is_valid: bool,
     done: bool,
-    stage: u8,
+    stage: GFDStages,
     last_symbol: Symbol,
     fn_name: String,
     arguments: Vec<Variable>,
@@ -34,7 +41,7 @@ impl GrammarFunctionDeclaration {
         GrammarFunctionDeclaration { 
             is_valid: true, 
             done: false,
-            stage: 0,
+            stage: GFDStages::Initialized,
             last_symbol: Symbol::FunctionDeclare, 
             fn_name: "undefined".to_string(), 
             arguments: Vec::<Variable>::new(),
@@ -47,11 +54,11 @@ impl GrammarFunctionDeclaration {
         let mut error_message: Option<String> = None;
         match self.stage {
             // Initial stage -> next symbol should be the fn name
-            0 => {
+            GFDStages::Initialized => {
                 match next.symbol {
                     Symbol::Value => {
                         self.fn_name = next.text;
-                        self.stage = 1;
+                        self.stage = GFDStages::NameProcessed;
                     },
                     _ => {
                         self.is_valid = false;
@@ -61,13 +68,13 @@ impl GrammarFunctionDeclaration {
                 }
             },
             // Function has been named. Now need either a left brace (no args) or a :: (args)
-            1 => {
+            GFDStages::NameProcessed => {
                 match next.symbol {
                     Symbol::BraceLeft => {
                         self.done = true;
                     }
                     Symbol::DoubleColon => {
-                        self.stage = 2;
+                        self.stage = GFDStages::SeekingArguments;
                     },
                     _ => {
                         self.is_valid = false;
@@ -77,24 +84,24 @@ impl GrammarFunctionDeclaration {
                 }
             },
             // Function has one or more arguments.
-            2 => {
+            GFDStages::SeekingArguments => {
                 if self.last_symbol == Symbol::DoubleColon || self.last_symbol == Symbol::RightArrow {
                     match next.symbol {
                         // If we receive a type after :: or ->, it implies that is the return type and there are no arguments
                         Symbol::TypeBool => {
-                            self.stage = 3;
+                            self.stage = GFDStages::SeekingBracket;
                             self.return_type = DataType::Bool;
                         },
                         Symbol::TypeInt => {
-                            self.stage = 3;
+                            self.stage = GFDStages::SeekingBracket;
                             self.return_type = DataType::Int;
                         },
                         Symbol::TypeStr => {
-                            self.stage = 3;
+                            self.stage = GFDStages::SeekingBracket;
                             self.return_type = DataType::Str;
                         },
                         Symbol::TypeVoid => {
-                            self.stage = 3;
+                            self.stage = GFDStages::SeekingBracket;
                             self.return_type = DataType::Void;
                         },
                         // A value here implies the argument name
@@ -139,7 +146,7 @@ impl GrammarFunctionDeclaration {
                     }
                 }
             },
-            3 => {
+            GFDStages::SeekingBracket => {
                 match next.symbol {
                     Symbol::BraceLeft => {
                         self.done = true;
@@ -151,7 +158,6 @@ impl GrammarFunctionDeclaration {
                     }
                 }
             }
-            _ => ()
         }
         // Update symbol register
         self.last_symbol = next.symbol;
@@ -161,10 +167,15 @@ impl GrammarFunctionDeclaration {
 
 // -------------------- Grammar: Properties --------------------
 
+enum GPStages {
+    Initialized,
+    ExpectValues
+}
+
 struct GrammarProperties {
     is_valid: bool,
     done: bool,
-    stage: u8,
+    stage: GPStages,
     last_symbol: Symbol,
     p_list: Vec<properties::Properties>
 }
@@ -174,7 +185,7 @@ impl GrammarProperties {
         GrammarProperties { 
             is_valid: true, 
             done: false,
-            stage: 0,
+            stage: GPStages::Initialized,
             last_symbol: Symbol::PropertyDeclaration, 
             p_list: Vec::<properties::Properties>::new(),
         }
@@ -189,10 +200,10 @@ impl GrammarProperties {
     fn step(&mut self, next: Token) -> Option<String> {
         let mut error_message: Option<String> = None;
         match self.stage {
-            0 => {
+            GPStages::Initialized => {
                 match next.symbol {
                     Symbol::DoubleColon => {
-                        self.stage = 1;
+                        self.stage = GPStages::ExpectValues;
                     },
                     _ => {
                         self.is_valid = false;
@@ -201,7 +212,7 @@ impl GrammarProperties {
                     }
                 }
             },
-            1 => {
+            GPStages::ExpectValues => {
                 match next.symbol {
                     Symbol::Value => {
                         match next.text.as_str() {
@@ -226,8 +237,7 @@ impl GrammarProperties {
                         error_message = Some(format!("Property list declared on line {} is invalid. Expected a valid property name or a new line, but received an unexpected token instead. The offending token is {}, which has symbol {:?}.", next.line, next.text, next.symbol));
                     }
                 }
-            },
-            _ => ()
+            }
         }
         return error_message;
     }
