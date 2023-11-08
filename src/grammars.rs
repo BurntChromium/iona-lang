@@ -20,11 +20,8 @@ enum GFDStages {
 /// #### Stages
 /// 
 ///     0: Initialized
-/// 
 ///     1: Name processed, seeking :: or {
-/// 
 ///     2: :: processed, seeking arguments
-/// 
 ///     3: arguments complete, seeking {
 struct GrammarFunctionDeclaration {
     is_valid: bool,
@@ -49,7 +46,7 @@ impl GrammarFunctionDeclaration {
         }
     }
 
-    // Steps forward through a state machine, returning optional error message
+    /// Steps forward through a state machine, returning optional error message
     fn step(&mut self, next: Token) -> Option<String> {
         let mut error_message: Option<String> = None;
         match self.stage {
@@ -172,6 +169,7 @@ enum GPStages {
     ExpectValues
 }
 
+/// The Grammar for declaring a function's properties
 struct GrammarProperties {
     is_valid: bool,
     done: bool,
@@ -241,4 +239,29 @@ impl GrammarProperties {
         }
         return error_message;
     }
+}
+
+// -------------------- Grammar: Variable Assignment --------------------
+
+enum AssignmentTypes {
+    Const, // const variable
+    Initialize, // let x = ...
+    Mutate // set x = ...
+}
+
+enum VariableAssignmentStages {
+    DeclaringType,
+    FindingName,
+    HandlingValues
+}
+
+pub struct GrammarVariableAssignments {
+    is_valid: bool,
+    done: bool,
+    stage: VariableAssignmentStages,
+    last_symbol: Symbol,
+    assignment_type: AssignmentTypes,
+    data_type: DataType,
+    name: String,
+    arguments: Vec<Token>
 }
