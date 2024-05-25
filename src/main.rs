@@ -4,6 +4,7 @@ use std::env;
 use std::error::Error;
 use std::fs;
 
+mod compiler_errors;
 mod grammars;
 mod lex;
 mod parse;
@@ -30,5 +31,5 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("input file is: \n{}", program_root);
     // Lex the file
     let _ = lex::lex(&program_root);
-    return Ok(());
+    Ok(())
 }

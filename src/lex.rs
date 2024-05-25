@@ -102,8 +102,8 @@ impl Token {
         Token {
             text: text.to_string(),
             symbol: Symbol::identify(text),
-            line: line,
-            word: word,
+            line,
+            word,
         }
     }
 }
@@ -117,7 +117,7 @@ pub fn lex(input: &str) -> Vec<Token> {
         let words = line.split(&[' ', '\t', '\r']);
         for (word_index, word) in words.enumerate() {
             // Handle exceptions to the "partition by space" rule
-            if word == "" {
+            if word.is_empty() {
                 // Skip empty lines
                 continue;
             } else if word.starts_with('(') || word.ends_with(')') {
@@ -149,7 +149,7 @@ pub fn lex(input: &str) -> Vec<Token> {
         tokens.push(Token::new("\n", line_index, 0));
     }
     _ = tokens.pop();
-    return tokens;
+    tokens
 }
 
 // -------------------- Unit Tests --------------------

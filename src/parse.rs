@@ -48,7 +48,7 @@ pub struct Node {
 pub struct Variable {
     pub name: String,
     pub data_type: DataType,
-    pub value: Option<Box<dyn Data>>
+    pub value: Option<Box<dyn Data>>,
 }
 
 // pub fn parse(tokens: Token) -> Node {

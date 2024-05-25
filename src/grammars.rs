@@ -2,6 +2,7 @@
 //!
 //! Grammars are essentially large state machines and look "kind of like" a regex. The difference between the grammars here and the regex is conditional behavior.
 
+use crate::compiler_errors::{CompilerProblem, ProblemClass};
 use crate::lex::{Symbol, Token};
 use crate::parse::{DataType, Variable};
 use crate::properties;
@@ -47,8 +48,8 @@ impl GrammarFunctionDeclaration {
     }
 
     /// Steps forward through a state machine, returning optional error message
-    pub fn step(&mut self, next: Token) -> Option<String> {
-        let mut error_message: Option<String> = None;
+    pub fn step(&mut self, next: Token) -> Option<CompilerProblem> {
+        let mut error_message: Option<CompilerProblem> = None;
         match self.stage {
             // Initial stage -> next symbol should be the fn name
             GFDStages::Initialized => match next.symbol {
@@ -57,18 +58,22 @@ impl GrammarFunctionDeclaration {
                         self.fn_name = next.text;
                         self.stage = GFDStages::NameProcessed;
                     } else {
-                        error_message = Some(format!(
-                            "Function declared on line {} is invalid. Function name should be ASCII.",
-                            next.line
-                        ))
+                        error_message = Some(CompilerProblem::new(
+                            ProblemClass::Error,
+                            "function name is not valid ASCII",
+                            next.line,
+                            next.word,
+                        ));
                     }
                 }
                 _ => {
                     self.is_valid = false;
                     self.done = true;
-                    error_message = Some(format!(
-                        "Function declared on line {} is invalid. Missing a function name",
-                        next.line
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        "function name is missing",
+                        next.line,
+                        next.word,
                     ));
                 }
             },
@@ -83,7 +88,7 @@ impl GrammarFunctionDeclaration {
                 _ => {
                     self.is_valid = false;
                     self.done = true;
-                    error_message = Some(format!("Function declared on line {} is invalid. Expected a '::' (if it has args) or a '{{' (if it doesn't have args) after the function name, but received '{}'.", next.line, next.text));
+                    error_message = Some(CompilerProblem::new(ProblemClass::Error, &format!("expected a '::' (if it has args) or a '{{' (if it doesn't have args) after the function name, but received '{}'.", next.text), next.line, next.word));
                 }
             },
             // Function has one or more arguments.
@@ -119,7 +124,7 @@ impl GrammarFunctionDeclaration {
                         _ => {
                             self.is_valid = false;
                             self.done = true;
-                            error_message = Some(format!("Function declared on line {} is invalid. Expected an argument name or a return type, but received '{}'. Check your function arguments.", next.line, next.text));
+                            error_message = Some(CompilerProblem::new(ProblemClass::Error, &format!("expected an argument name or a return type, but received '{}'. Check your function arguments.", next.text), next.line, next.word));
                         }
                     }
                 } else if self.last_symbol == Symbol::Value {
@@ -146,12 +151,34 @@ impl GrammarFunctionDeclaration {
                         Symbol::TypeVoid => {
                             self.is_valid = false;
                             self.done = true;
-                            error_message = Some(format!("Function declared on line {} is invalid. Argument type for '{}' cannot be 'void'.", next.line, self.arguments.last().expect("expected argument to exist").name));
+                            error_message = Some(CompilerProblem::new(
+                                ProblemClass::Error,
+                                &format!(
+                                    "argument type for '{}' cannot be 'void'.",
+                                    self.arguments
+                                        .last()
+                                        .expect("expected argument to exist")
+                                        .name
+                                ),
+                                next.line,
+                                next.word,
+                            ));
                         }
                         _ => {
                             self.is_valid = false;
                             self.done = true;
-                            error_message = Some(format!("Function declared on line {} is invalid. Need a type for argument '{}'.", next.line, self.arguments.last().expect("expected argument to exist").name));
+                            error_message = Some(CompilerProblem::new(
+                                ProblemClass::Error,
+                                &format!(
+                                    "need a type for argument '{}'.",
+                                    self.arguments
+                                        .last()
+                                        .expect("expected argument to exist")
+                                        .name
+                                ),
+                                next.line,
+                                next.word,
+                            ));
                         }
                     }
                 } else if self.last_symbol == Symbol::TypeBool
@@ -162,7 +189,18 @@ impl GrammarFunctionDeclaration {
                     if next.symbol != Symbol::RightArrow {
                         self.is_valid = false;
                         self.done = true;
-                        error_message = Some(format!("Function declared on line {} is invalid. Need a '->' after argument '{}'.", next.line, self.arguments.last().expect("expected argument to exist").name));
+                        error_message = Some(CompilerProblem::new(
+                            ProblemClass::Error,
+                            &format!(
+                                "need a '->' after argument '{}'.",
+                                self.arguments
+                                    .last()
+                                    .expect("expected argument to exist")
+                                    .name
+                            ),
+                            next.line,
+                            next.word,
+                        ));
                     }
                 }
             }
@@ -173,13 +211,21 @@ impl GrammarFunctionDeclaration {
                 _ => {
                     self.is_valid = false;
                     self.done = true;
-                    error_message = Some(format!("Function declared on line {} is invalid. Expected '{{', but received '{}'. Check your function arguments.", next.line, next.text));
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!(
+                            "Expected '{{', but received '{}'. Check your function arguments.",
+                            next.text
+                        ),
+                        next.line,
+                        next.word,
+                    ));
                 }
             },
         }
         // Update symbol register
         self.last_symbol = next.symbol;
-        return error_message;
+        error_message
     }
 }
 
@@ -240,7 +286,7 @@ impl GrammarProperties {
                     }
                 },
                 Symbol::Newline => {
-                    if self.p_list.len() == 0 {
+                    if self.p_list.is_empty() {
                         println!("Warning: empty property list. A property list was declared on line {}, but no properties were provided.", next.line);
                     }
                     self.done = true;
@@ -285,7 +331,6 @@ pub struct GrammarVariableAssignments {
 mod tests {
     use super::*;
     use crate::lex::lex;
-    
 
     #[test]
     fn declare_fn_simple() {
@@ -294,18 +339,20 @@ mod tests {
         let tokens = lex(line);
         // Skip the first token (the `fn` token)
         for t in tokens.into_iter().skip(1) {
-            let msg = gfd.step(t);
-            if msg.is_some() {
-                println!("{}", msg.unwrap());
-            }
+            gfd.step(t);
         }
         assert!(gfd.done == true);
         assert!(gfd.is_valid == true);
         assert_eq!(gfd.fn_name, "add");
         assert_eq!(gfd.arguments.len(), 2);
+        // Arg 1
         assert_eq!(gfd.arguments[0].name, "a");
         assert_eq!(gfd.arguments[0].data_type, DataType::Int);
         assert!(gfd.arguments[0].value.is_none());
+        // Arg 2
+        assert_eq!(gfd.arguments[1].name, "b");
+        assert_eq!(gfd.arguments[1].data_type, DataType::Int);
+        assert!(gfd.arguments[1].value.is_none());
         assert_eq!(gfd.return_type, DataType::Int);
     }
 }
