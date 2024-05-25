@@ -298,7 +298,7 @@ impl GrammarProperties {
                 }
             },
         }
-        return error_message;
+        error_message
     }
 }
 
@@ -341,8 +341,8 @@ mod tests {
         for t in tokens.into_iter().skip(1) {
             gfd.step(t);
         }
-        assert!(gfd.done == true);
-        assert!(gfd.is_valid == true);
+        assert!(gfd.done);
+        assert!(gfd.is_valid);
         assert_eq!(gfd.fn_name, "add");
         assert_eq!(gfd.arguments.len(), 2);
         // Arg 1

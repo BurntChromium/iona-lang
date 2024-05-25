@@ -13,12 +13,11 @@ mod properties;
 fn main() -> Result<(), Box<dyn Error>> {
     // Capture command line
     let args: Vec<String> = env::args().collect();
-    let file: &str;
-    if args.len() == 1 {
-        file = "main.iona";
+    let file: &str = if args.len() == 1 {
+        "main.iona"
     } else {
-        file = &args[1];
-    }
+        &args[1]
+    };
     // Try to open linked file
     let maybe_text = fs::read_to_string(file);
     let program_root: String;
