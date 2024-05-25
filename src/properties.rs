@@ -9,10 +9,6 @@ pub enum Properties {
     Pure,
     Public,
     Export,
-    ReadFile,
-    WriteFile,
-    ReadNetwork,
-    WriteNetwork
 }
 
-pub const PROPERTY_LIST: [&'static str; 7] = ["Pure", "Public", "Export", "ReadFile", "WriteFile", "ReadNetwork", "WriteNetwork"];
+pub const PROPERTY_LIST: [&'static str; 3] = ["Pure", "Public", "Export"];

@@ -1,4 +1,4 @@
-import read write from std.files
+import read_file write_file from std.files
 
 fn main {
     println "Hello, world"
@@ -25,17 +25,17 @@ fn div :: a int -> b int -> int {
 
 fn read_modify_update :: filepath str {
     #Properties :: Export
-    #Requirements :: ReadFiles WriteFile 
-    let data :: str mut = read filepath
-    set data 0 = "a"
-    write data filepath
+    #Requirements :: ReadFile WriteFile 
+    let data :: str mut = read_file filepath // `filepath` points to a list
+    set data 0 = "a" // set first entry to `a` 
+    write_file data filepath // write_file data back out
 }
 
 fn copy_to :: old_filepath str -> new_filepath str {
     #Properties :: Export
-    #Requirements :: ReadFiles WriteFile
-    let data :: str = read old_filepath
-    write data new_filepath
+    #Requirements :: ReadFile WriteFile
+    let data :: str = read_file old_filepath
+    write_file data new_filepath
 }
 
 fn fibonacci :: nth int -> int {
