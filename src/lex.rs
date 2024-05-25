@@ -152,6 +152,8 @@ pub fn lex(input: &str) -> Vec<Token> {
     return tokens;
 }
 
+// -------------------- Unit Tests --------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;

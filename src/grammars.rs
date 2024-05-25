@@ -23,7 +23,7 @@ enum GFDStages {
 ///     1: Name processed, seeking :: or {
 ///     2: :: processed, seeking arguments
 ///     3: arguments complete, seeking {
-struct GrammarFunctionDeclaration {
+pub struct GrammarFunctionDeclaration {
     is_valid: bool,
     done: bool,
     stage: GFDStages,
@@ -34,7 +34,7 @@ struct GrammarFunctionDeclaration {
 }
 
 impl GrammarFunctionDeclaration {
-    fn new() -> GrammarFunctionDeclaration {
+    pub fn new() -> GrammarFunctionDeclaration {
         GrammarFunctionDeclaration {
             is_valid: true,
             done: false,
@@ -47,14 +47,21 @@ impl GrammarFunctionDeclaration {
     }
 
     /// Steps forward through a state machine, returning optional error message
-    fn step(&mut self, next: Token) -> Option<String> {
+    pub fn step(&mut self, next: Token) -> Option<String> {
         let mut error_message: Option<String> = None;
         match self.stage {
             // Initial stage -> next symbol should be the fn name
             GFDStages::Initialized => match next.symbol {
                 Symbol::Value => {
-                    self.fn_name = next.text;
-                    self.stage = GFDStages::NameProcessed;
+                    if next.text.is_ascii() {
+                        self.fn_name = next.text;
+                        self.stage = GFDStages::NameProcessed;
+                    } else {
+                        error_message = Some(format!(
+                            "Function declared on line {} is invalid. Function name should be ASCII.",
+                            next.line
+                        ))
+                    }
                 }
                 _ => {
                     self.is_valid = false;
@@ -106,6 +113,7 @@ impl GrammarFunctionDeclaration {
                             self.arguments.push(Variable {
                                 name: next.text,
                                 data_type: DataType::Void,
+                                value: None,
                             });
                         }
                         _ => {
@@ -271,4 +279,33 @@ pub struct GrammarVariableAssignments {
     data_type: DataType,
     name: String,
     arguments: Vec<Token>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lex::lex;
+    
+
+    #[test]
+    fn declare_fn_simple() {
+        let mut gfd = GrammarFunctionDeclaration::new();
+        let line: &str = "fn add :: a int -> b int -> int {";
+        let tokens = lex(line);
+        // Skip the first token (the `fn` token)
+        for t in tokens.into_iter().skip(1) {
+            let msg = gfd.step(t);
+            if msg.is_some() {
+                println!("{}", msg.unwrap());
+            }
+        }
+        assert!(gfd.done == true);
+        assert!(gfd.is_valid == true);
+        assert_eq!(gfd.fn_name, "add");
+        assert_eq!(gfd.arguments.len(), 2);
+        assert_eq!(gfd.arguments[0].name, "a");
+        assert_eq!(gfd.arguments[0].data_type, DataType::Int);
+        assert!(gfd.arguments[0].value.is_none());
+        assert_eq!(gfd.return_type, DataType::Int);
+    }
 }

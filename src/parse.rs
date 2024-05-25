@@ -2,6 +2,8 @@
 //!
 //! Organizational note: the syntax of permissible tokens is defined by the `grammar` crate.
 
+use std::fmt::Debug;
+
 /// Object represents something that has been parsed
 ///
 /// Permissible Nodes
@@ -24,12 +26,16 @@ enum NodeType {
     ImportStatement,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum DataType {
     Void,
     Int,
+    Float,
     Str,
     Bool,
 }
+
+pub trait Data: Debug {}
 
 pub struct Node {
     node_type: NodeType,
@@ -38,9 +44,11 @@ pub struct Node {
     children: Vec<Node>,
 }
 
+#[derive(Debug)]
 pub struct Variable {
     pub name: String,
     pub data_type: DataType,
+    pub value: Option<Box<dyn Data>>
 }
 
 // pub fn parse(tokens: Token) -> Node {
