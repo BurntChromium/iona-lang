@@ -214,7 +214,7 @@ impl GrammarFunctionDeclaration {
                     error_message = Some(CompilerProblem::new(
                         ProblemClass::Error,
                         &format!(
-                            "Expected '{{', but received '{}'. Check your function arguments.",
+                            "expected '{{', but received '{}'. Check your function arguments.",
                             next.text
                         ),
                         next.line,
@@ -272,7 +272,7 @@ impl GrammarProperties {
                 _ => {
                     self.is_valid = false;
                     self.done = true;
-                    error_message = Some(format!("Property list declared on line {} is invalid. Should be `#Properties :: A B C`.", next.line));
+                    error_message = Some(format!("property list declared on line {} is invalid. Should be `#Properties :: A B C`.", next.line));
                 }
             },
             GPStages::ExpectValues => match next.symbol {
@@ -282,7 +282,7 @@ impl GrammarProperties {
                     _ => {
                         self.is_valid = false;
                         self.done = true;
-                        error_message = Some(format!("Property list declared on line {} is invalid. Unrecognized property {}. Valid properties are:\n{:?}", next.line, next.text, properties::PROPERTY_LIST));
+                        error_message = Some(format!("property list declared on line {} is invalid. Unrecognized property {}. Valid properties are:\n{:?}", next.line, next.text, properties::PROPERTY_LIST));
                     }
                 },
                 Symbol::Newline => {

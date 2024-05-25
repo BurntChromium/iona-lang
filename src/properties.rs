@@ -11,4 +11,5 @@ pub enum Properties {
     Export,
 }
 
+/// For error messages
 pub const PROPERTY_LIST: [&str; 3] = ["Pure", "Public", "Export"];
