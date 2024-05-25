@@ -290,7 +290,7 @@ mod tests {
     #[test]
     fn declare_fn_simple() {
         let mut gfd = GrammarFunctionDeclaration::new();
-        let line: &str = "fn add :: a int -> b int -> int {";
+        let line: &str = "fn add :: a int -> b int -> int {\n";
         let tokens = lex(line);
         // Skip the first token (the `fn` token)
         for t in tokens.into_iter().skip(1) {
