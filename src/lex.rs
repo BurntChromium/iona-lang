@@ -16,8 +16,10 @@ pub enum Symbol {
     Lt,
     Gte,
     Lte,
-    BraceLeft,
-    BraceRight,
+    ParenOpen,
+    ParenClose,
+    BraceOpen,
+    BraceClose,
     Return,
     Import,
     From,
@@ -37,7 +39,7 @@ pub enum Symbol {
     TypeStr,
     TypeInt,
     TypeBool,
-    TypeVoid
+    TypeVoid,
 }
 
 impl Symbol {
@@ -57,8 +59,10 @@ impl Symbol {
             "<" => Symbol::Lt,
             ">=" => Symbol::Gte,
             "<=" => Symbol::Lte,
-            "{" => Symbol::BraceLeft,
-            "}" => Symbol::BraceRight,
+            "(" => Symbol::ParenOpen,
+            ")" => Symbol::ParenClose,
+            "{" => Symbol::BraceOpen,
+            "}" => Symbol::BraceClose,
             "return" => Symbol::Return,
             "import" => Symbol::Import,
             "from" => Symbol::From,
@@ -90,14 +94,16 @@ pub struct Token {
     pub text: String,
     pub symbol: Symbol,
     pub line: usize,
+    pub word: usize,
 }
 
 impl Token {
-    pub fn new(text: &str, line: usize) -> Token {
+    pub fn new(text: &str, line: usize, word: usize) -> Token {
         Token {
             text: text.to_string(),
             symbol: Symbol::identify(text),
             line: line,
+            word: word,
         }
     }
 }
@@ -106,10 +112,10 @@ impl Token {
 pub fn lex(input: &str) -> Vec<Token> {
     let mut tokens: Vec<Token> = Vec::new();
     // Analyze line by line (delegates issue of deciding what constitutes a new line)
-    for (index, line) in input.lines().enumerate() {
+    for (line_index, line) in input.lines().enumerate() {
         // Split on some standard whitespace
         let words = line.split(&[' ', '\t', '\r']);
-        for word in words {
+        for (word_index, word) in words.enumerate() {
             // Handle exceptions to the "partition by space" rule
             if word == "" {
                 // Skip empty lines
@@ -122,21 +128,25 @@ pub fn lex(input: &str) -> Vec<Token> {
                 for char in word.chars() {
                     if char == '(' {
                         offset_start += 1;
-                        tokens.push(Token::new("(", index));
+                        tokens.push(Token::new("(", line_index, word_index));
                     }
                     if char == ')' {
                         offset_end -= 1;
-                        tokens.push(Token::new(")", index));
+                        tokens.push(Token::new(")", line_index, word_index));
                     }
                 }
-                tokens.push(Token::new(&word[offset_start..offset_end], index));
+                tokens.push(Token::new(
+                    &word[offset_start..offset_end],
+                    line_index,
+                    word_index,
+                ));
             } else {
                 // Default case
-                tokens.push(Token::new(word, index));
+                tokens.push(Token::new(word, line_index, word_index));
             }
         }
         // Add new line separator
-        tokens.push(Token::new("\n", index));
+        tokens.push(Token::new("\n", line_index, 0));
     }
     _ = tokens.pop();
     return tokens;
@@ -169,13 +179,13 @@ mod tests {
         let expected: Vec<Symbol> = vec![
             Symbol::FunctionDeclare,
             Symbol::Value,
-            Symbol::BraceLeft,
+            Symbol::BraceOpen,
             Symbol::Newline,
             Symbol::Value,
             Symbol::Value,
             Symbol::Value,
             Symbol::Newline,
-            Symbol::BraceRight,
+            Symbol::BraceClose,
         ];
         let tokens = lex(program);
         let actual = tokens.iter().map(|t| t.symbol).collect::<Vec<Symbol>>();
@@ -229,7 +239,7 @@ mod tests {
             Symbol::TypeInt,
             Symbol::RightArrow,
             Symbol::TypeInt,
-            Symbol::BraceLeft,
+            Symbol::BraceOpen,
             Symbol::Newline,
             Symbol::PropertyDeclaration,
             Symbol::DoubleColon,
@@ -241,7 +251,7 @@ mod tests {
             Symbol::Plus,
             Symbol::Value,
             Symbol::Newline,
-            Symbol::BraceRight,
+            Symbol::BraceClose,
         ];
         let tokens = lex(program);
         let actual = tokens.iter().map(|t| t.symbol).collect::<Vec<Symbol>>();

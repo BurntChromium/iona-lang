@@ -1,11 +1,11 @@
 //! Parse constructs an abstract syntax tree or equivalent
-//! 
+//!
 //! Organizational note: the syntax of permissible tokens is defined by the `grammar` crate.
 
 /// Object represents something that has been parsed
-/// 
+///
 /// Permissible Nodes
-/// 
+///
 /// - FunctionDeclaration: a function declaration is its name and type signature
 /// - PropertyDeclaration: a list of properties required by the function
 /// - ContractDeclaration: some runtime behavior the fn must obey
@@ -21,7 +21,7 @@ enum NodeType {
     VariableAssignment,
     TypeDeclaration,
     EffectualFunctionInvocation,
-    ImportStatement
+    ImportStatement,
 }
 
 pub enum DataType {
@@ -35,12 +35,12 @@ pub struct Node {
     node_type: NodeType,
     source_line: usize,
     source_string: String,
-    children: Vec<Node>
+    children: Vec<Node>,
 }
 
 pub struct Variable {
     pub name: String,
-    pub data_type: DataType
+    pub data_type: DataType,
 }
 
 // pub fn parse(tokens: Token) -> Node {

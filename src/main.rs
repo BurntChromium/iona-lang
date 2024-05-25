@@ -4,8 +4,8 @@ use std::env;
 use std::error::Error;
 use std::fs;
 
-mod lex;
 mod grammars;
+mod lex;
 mod parse;
 mod properties;
 

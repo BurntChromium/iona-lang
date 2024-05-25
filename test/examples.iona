@@ -16,15 +16,16 @@ fn add :: a int -> b int -> int {
 }
 
 // Function with a (precondition) contract
+// If a contract does not evaluate to True, it errors (think of a contract like a "whitelist" of allowed inputs)
 fn div :: a int -> b int -> int {
     #Properties :: Pure Export
-    #In :: b == 0 -> "b must not be 0"
+    #In :: b != 0 -> "b must not be 0"
     return a / b
 }
 
 fn read_modify_update :: filepath str {
     #Properties :: Export
-    #Requirements :: ReadFiles WriteFiles 
+    #Requirements :: ReadFiles WriteFile 
     let data :: str mut = read filepath
     set data 0 = "a"
     write data filepath
@@ -32,14 +33,14 @@ fn read_modify_update :: filepath str {
 
 fn copy_to :: old_filepath str -> new_filepath str {
     #Properties :: Export
-    #Requirements :: ReadFiles WriteFiles
+    #Requirements :: ReadFiles WriteFile
     let data :: str = read old_filepath
     write data new_filepath
 }
 
 fn fibonacci :: nth int -> int {
     #Properties Pure Export
-    #In :: n < 0 -> "n must be at least 0"
+    #In :: n >= 0 -> "n must be at least 0"
     if n == 0 {
         return 1
     } else if n == 1 {
