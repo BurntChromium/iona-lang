@@ -323,9 +323,13 @@ impl Grammar for GrammarProperties {
                     }
                 },
                 Symbol::Newline => {
-                    if self.p_list.is_empty() {
-                        println!("Warning: empty property list. A property list was declared on line {}, but no properties were provided.", next.line);
-                    }
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Warning,
+                        "empty property list",
+                        "either remove the property list or add valid properties",
+                        next.line,
+                        next.word,
+                    ));
                     self.done = true;
                 }
                 _ => {

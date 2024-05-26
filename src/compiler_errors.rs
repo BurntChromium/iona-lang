@@ -62,9 +62,14 @@ pub fn display_problem(program_text: &str, message_context: &str, problem: Compi
             format!(" \x1b[1;34m{line_number} |\x1b[0m {}", l)
         })
         .collect::<String>();
+    let color_hex_code: &str = match problem.class {
+        ProblemClass::Error => "\x1b[1;31m",
+        ProblemClass::Warning => "\x1b[1;33m",
+        ProblemClass::Lint => "\x1b[1;35m",
+    };
     println!(
         // Hex codes are for colored output
-        "\x1b[1;31m{}\x1b[0m: {message_context} on line {}: {}\n{context}\n\x1b[1;34m hint:\x1b[0m {}",
+        "{color_hex_code}{}\x1b[0m: {message_context} on line {}: {}\n{context}\n\x1b[1;34m hint:\x1b[0m {}",
         problem.class, problem.line, problem.message, problem.hint
     );
 }
