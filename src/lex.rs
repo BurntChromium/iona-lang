@@ -139,13 +139,15 @@ pub fn lex(input: &str) -> Vec<Token> {
                         deferred_closing_parens += 1;
                     }
                 }
+                // Push that word stripped of parens
                 tokens.push(Token::new(
                     &word[offset_start..offset_end],
                     line_index,
                     word_index,
                 ));
+                // Push any trailing '('s
                 word_index += 1;
-                for i in 0..deferred_closing_parens {
+                for _ in 0..deferred_closing_parens {
                     tokens.push(Token::new(")", line_index, word_index));
                     word_index += 1;
                 }

@@ -3,14 +3,15 @@
 use std::env;
 use std::error::Error;
 use std::fs;
-
-use crate::compiler_errors::display_problem;
+use std::time::Instant;
 
 mod compiler_errors;
 mod grammars;
 mod lex;
 mod parse;
 mod properties;
+
+use crate::compiler_errors::display_problem;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Capture command line
@@ -28,20 +29,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         program_root = maybe_text.unwrap();
     }
+    // Start timer
+    let now = Instant::now();
     // Debug: print the file
-    println!("input file is: \n{}", program_root);
+    // println!("input file is: \n{}", program_root);
     // Lex the file
     let tokens = lex::lex(&program_root);
     // Parse the file
     let nodes_or_errors = parse::parse(tokens);
     match nodes_or_errors {
-        Ok(_) => println!("Code is okay!"),
+        Ok(_) => {
+            let elapsed = now.elapsed();
+            println!("\x1b[1;32mFinished\x1b[0m compiling in {:.2?}", elapsed);
+            Ok(())
+        }
         Err(problems) => {
-            println!("Compilation failed.");
             for problem in problems {
                 display_problem(&program_root, "parsing failed", problem);
             }
+            Err("fatal error occurred during parsing".into())
         }
     }
-    Ok(())
 }

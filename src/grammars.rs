@@ -9,14 +9,16 @@ use crate::lex::{Symbol, Token};
 use crate::parse::{DataType, Variable};
 use crate::properties;
 
+#[derive(Debug)]
 pub enum Grammar {
-    GrammarFunctionDeclaration,
-    GrammarProperties,
-    GrammarVariableAssignments,
+    FunctionDeclaration(GrammarFunctionDeclaration),
+    Properties(GrammarProperties),
+    VariableAssignment(GrammarVariableAssignments),
 }
 
 // -------------------- Grammar: Functions --------------------
 
+#[derive(Debug)]
 enum GFDStages {
     Initialized,
     NameProcessed,
@@ -32,6 +34,7 @@ enum GFDStages {
 ///     1: Name processed, seeking :: or {
 ///     2: :: processed, seeking arguments
 ///     3: arguments complete, seeking {
+#[derive(Debug)]
 pub struct GrammarFunctionDeclaration {
     is_valid: bool,
     done: bool,
@@ -57,6 +60,9 @@ impl GrammarFunctionDeclaration {
 
     /// Steps forward through a state machine, returning optional error message
     pub fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
+        if self.done {
+            return None;
+        }
         let mut error_message: Option<CompilerProblem> = None;
         match self.stage {
             // Initial stage -> next symbol should be the fn name
@@ -69,6 +75,7 @@ impl GrammarFunctionDeclaration {
                         error_message = Some(CompilerProblem::new(
                             ProblemClass::Error,
                             "function name is not valid ASCII",
+                            "choose a different function name",
                             next.line,
                             next.word,
                         ));
@@ -80,6 +87,7 @@ impl GrammarFunctionDeclaration {
                     error_message = Some(CompilerProblem::new(
                         ProblemClass::Error,
                         "function name is missing",
+                        "choose a name for this function",
                         next.line,
                         next.word,
                     ));
@@ -96,7 +104,7 @@ impl GrammarFunctionDeclaration {
                 _ => {
                     self.is_valid = false;
                     self.done = true;
-                    error_message = Some(CompilerProblem::new(ProblemClass::Error, &format!("expected a '::' (if it has args) or a '{{' (if it doesn't have args) after the function name, but received '{}'.", next.text), next.line, next.word));
+                    error_message = Some(CompilerProblem::new(ProblemClass::Error, &format!("expected a '::' (if it has args) or a '{{' (if it doesn't have args) after the function name, but received '{}'.", next.text), "functions should look like this: `fn foo :: a int -> int`", next.line, next.word));
                 }
             },
             // Function has one or more arguments.
@@ -132,7 +140,7 @@ impl GrammarFunctionDeclaration {
                         _ => {
                             self.is_valid = false;
                             self.done = true;
-                            error_message = Some(CompilerProblem::new(ProblemClass::Error, &format!("expected an argument name or a return type, but received '{}'. Check your function arguments.", next.text), next.line, next.word));
+                            error_message = Some(CompilerProblem::new(ProblemClass::Error, &format!("expected an argument name or a return type, but received '{}'.", next.text), "check your function arguments.", next.line, next.word));
                         }
                     }
                 } else if self.last_symbol == Symbol::Value {
@@ -168,6 +176,7 @@ impl GrammarFunctionDeclaration {
                                         .expect("expected argument to exist")
                                         .name
                                 ),
+                                "the `void` keyword is only valid as a return type",
                                 next.line,
                                 next.word,
                             ));
@@ -178,12 +187,13 @@ impl GrammarFunctionDeclaration {
                             error_message = Some(CompilerProblem::new(
                                 ProblemClass::Error,
                                 &format!(
-                                    "need a type for argument '{}'.",
+                                    "argument '{}' has no type information.",
                                     self.arguments
                                         .last()
                                         .expect("expected argument to exist")
                                         .name
                                 ),
+                                "add a type for this argument",
                                 next.line,
                                 next.word,
                             ));
@@ -200,12 +210,13 @@ impl GrammarFunctionDeclaration {
                         error_message = Some(CompilerProblem::new(
                             ProblemClass::Error,
                             &format!(
-                                "need a '->' after argument '{}'.",
+                                "missing a '->' after argument '{}'.",
                                 self.arguments
                                     .last()
                                     .expect("expected argument to exist")
                                     .name
                             ),
+                            "add a `->` to separate two arguments",
                             next.line,
                             next.word,
                         ));
@@ -221,10 +232,8 @@ impl GrammarFunctionDeclaration {
                     self.done = true;
                     error_message = Some(CompilerProblem::new(
                         ProblemClass::Error,
-                        &format!(
-                            "expected '{{', but received '{}'. Check your function arguments.",
-                            next.text
-                        ),
+                        &format!("expected '{{', but received '{}'.", next.text),
+                        "check your function arguments.",
                         next.line,
                         next.word,
                     ));
@@ -239,13 +248,15 @@ impl GrammarFunctionDeclaration {
 
 // -------------------- Grammar: Properties --------------------
 
+#[derive(Debug)]
 enum GPStages {
     Initialized,
     ExpectValues,
 }
 
 /// The Grammar for declaring a function's properties
-struct GrammarProperties {
+#[derive(Debug)]
+pub struct GrammarProperties {
     is_valid: bool,
     done: bool,
     stage: GPStages,
@@ -312,18 +323,21 @@ impl GrammarProperties {
 
 // -------------------- Grammar: Variable Assignment --------------------
 
+#[derive(Debug)]
 enum AssignmentTypes {
     Const,      // const variable
     Initialize, // let x = ...
     Mutate,     // set x = ...
 }
 
+#[derive(Debug)]
 enum VariableAssignmentStages {
     DeclaringType,
     FindingName,
     HandlingValues,
 }
 
+#[derive(Debug)]
 pub struct GrammarVariableAssignments {
     is_valid: bool,
     done: bool,
@@ -367,13 +381,11 @@ mod tests {
     #[test]
     fn declare_fn_simple_2() {
         let mut gfd = GrammarFunctionDeclaration::new();
-        let line: &str = "fn copy_to :: old_filepath str -> new_filepath str -> void {
-        ";
+        let line: &str = "fn copy_to :: old_filepath str -> new_filepath str -> void {";
         let tokens = lex(line);
         // Skip the first token (the `fn` token)
         for t in tokens.into_iter().skip(1) {
-            let msg = gfd.step(&t);
-            println!("{:?}", msg);
+            gfd.step(&t);
         }
         assert!(gfd.done);
         assert!(gfd.is_valid);
@@ -381,12 +393,31 @@ mod tests {
         assert_eq!(gfd.arguments.len(), 2);
         // Arg 1
         assert_eq!(gfd.arguments[0].name, "old_filepath");
-        assert_eq!(gfd.arguments[0].data_type, DataType::Int);
+        assert_eq!(gfd.arguments[0].data_type, DataType::Str);
         assert!(gfd.arguments[0].value.is_none());
         // Arg 2
         assert_eq!(gfd.arguments[1].name, "new_filepath");
         assert_eq!(gfd.arguments[1].data_type, DataType::Str);
         assert!(gfd.arguments[1].value.is_none());
         assert_eq!(gfd.return_type, DataType::Void);
+    }
+
+    #[test]
+    fn declare_fn_no_name() {
+        let mut gfd = GrammarFunctionDeclaration::new();
+        let line: &str = "fn :: old_filepath str -> new_filepath str -> void {";
+        let tokens = lex(line);
+        let mut errors: Vec<Option<CompilerProblem>> = Vec::new();
+        // Skip the first token (the `fn` token)
+        for t in tokens.into_iter().skip(1) {
+            errors.push(gfd.step(&t));
+        }
+        assert!(gfd.done);
+        assert!(!gfd.is_valid);
+        assert!(errors[0].is_some());
+        assert_eq!(
+            errors[0].as_ref().unwrap().message,
+            "function name is missing"
+        );
     }
 }

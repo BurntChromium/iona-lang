@@ -20,7 +20,7 @@ use crate::lex::{Symbol, Token};
 /// - TypeDeclaration: creating a new type
 /// - EffectualFunctionInvocation: some fn call without let/set/return (i.e. it exists only for whatever side effect is triggered by calling it)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum NodeType {
+pub enum NodeType {
     FunctionDeclaration,
     PropertyDeclaration,
     ContractDeclaration,
@@ -41,12 +41,21 @@ pub enum DataType {
 
 pub trait Data: Debug {}
 
+#[derive(Debug)]
 pub struct Node {
-    node_type: NodeType,
-    grammar: Grammar,
-    source_line: usize,
-    source_string: String,
-    children: Vec<Node>,
+    pub node_type: NodeType,
+    pub grammar: Grammar,
+    pub source_line: usize,
+}
+
+impl Node {
+    pub fn new(node_type: NodeType, grammar: Grammar, source_line: usize) -> Node {
+        Node {
+            node_type,
+            grammar,
+            source_line,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -65,7 +74,7 @@ pub struct Variable {
 /// - Along the way, accumulate any errors we find
 /// - When all lines have been mapped, return an Error if we have found any problems, or return a list of nodes if we have not
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, Vec<CompilerProblem>> {
-    let nodes = Vec::<Node>::new();
+    let mut nodes = Vec::<Node>::new();
     let mut error_list: Vec<CompilerProblem> = Vec::<CompilerProblem>::new();
     // We will be skipping the iterator from inside the loop, so we do something a little weird looking
     let mut iterator = tokens.iter();
@@ -78,16 +87,30 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, Vec<CompilerProblem>> {
             Symbol::FunctionDeclare => {
                 let mut grammar = GrammarFunctionDeclaration::new();
                 let mut errors: Vec<Option<CompilerProblem>> = Vec::new();
-                let _ = iterator
-                    .by_ref()
-                    .skip(1)
-                    .take_while(|t| t.line == token.line)
-                    .map(|t| errors.push(grammar.step(t)));
-                if errors.iter().any(|x| x.is_some()) {
-                    let _ = errors
-                        .into_iter()
-                        .filter(|e| e.is_some())
-                        .map(|e| error_list.push(e.unwrap()));
+                let future = iterator.clone().peekable();
+                for t in future {
+                    if t.line == token.line {
+                        errors.push(grammar.step(t));
+                    } else {
+                        break;
+                    }
+                }
+                // Then force the iterator to catch up
+                iterator.nth(errors.len());
+                // Check for errors (this happens after skip because consumes iterator)
+                let mut okay = true;
+                for e in errors {
+                    if let Some(problem) = e {
+                        error_list.push(problem);
+                        okay = false;
+                    }
+                }
+                if okay {
+                    nodes.push(Node::new(
+                        NodeType::FunctionDeclaration,
+                        Grammar::FunctionDeclaration(grammar),
+                        token.line,
+                    ));
                 }
             }
             Symbol::PropertyDeclaration => {}
