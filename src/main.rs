@@ -4,6 +4,8 @@ use std::env;
 use std::error::Error;
 use std::fs;
 
+use crate::compiler_errors::display_problem;
+
 mod compiler_errors;
 mod grammars;
 mod lex;
@@ -29,6 +31,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Debug: print the file
     println!("input file is: \n{}", program_root);
     // Lex the file
-    let _ = lex::lex(&program_root);
+    let tokens = lex::lex(&program_root);
+    // Parse the file
+    let nodes_or_errors = parse::parse(tokens);
+    match nodes_or_errors {
+        Ok(_) => println!("Code is okay!"),
+        Err(problems) => {
+            println!("Compilation failed.");
+            for problem in problems {
+                display_problem(&program_root, "parsing failed", problem);
+            }
+        }
+    }
     Ok(())
 }

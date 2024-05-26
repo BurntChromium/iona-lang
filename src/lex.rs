@@ -1,7 +1,7 @@
 /// Symbol defines what is recognized by the lexer
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Symbol {
-    Value,
+    Value, // needs further evaluation
     FunctionDeclare,
     DoubleColon,
     RightArrow,
@@ -257,6 +257,11 @@ mod tests {
         ];
         let tokens = lex(program);
         let actual = tokens.iter().map(|t| t.symbol).collect::<Vec<Symbol>>();
+        println!("{:#?}", tokens);
         assert_eq!(actual, expected);
+        assert_eq!(tokens[7].line, 1);
+        assert_eq!(tokens[7].word, 0);
+        assert_eq!(tokens[8].line, 1);
+        assert_eq!(tokens[8].word, 1);
     }
 }

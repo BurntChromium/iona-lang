@@ -1,11 +1,19 @@
 //! Grammars define the permissible syntax of a sequence of tokens
 //!
 //! Grammars are essentially large state machines and look "kind of like" a regex. The difference between the grammars here and the regex is conditional behavior.
+//!
+//! We have a small number of grammars (7) because the language has a strict structure -- each line must belong to one these classes of behavior. The list of grammars corresponds to the node types.
 
 use crate::compiler_errors::{CompilerProblem, ProblemClass};
 use crate::lex::{Symbol, Token};
 use crate::parse::{DataType, Variable};
 use crate::properties;
+
+pub enum Grammar {
+    GrammarFunctionDeclaration,
+    GrammarProperties,
+    GrammarVariableAssignments,
+}
 
 // -------------------- Grammar: Functions --------------------
 
@@ -48,14 +56,14 @@ impl GrammarFunctionDeclaration {
     }
 
     /// Steps forward through a state machine, returning optional error message
-    pub fn step(&mut self, next: Token) -> Option<CompilerProblem> {
+    pub fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
         let mut error_message: Option<CompilerProblem> = None;
         match self.stage {
             // Initial stage -> next symbol should be the fn name
             GFDStages::Initialized => match next.symbol {
                 Symbol::Value => {
                     if next.text.is_ascii() {
-                        self.fn_name = next.text;
+                        self.fn_name = next.text.to_string();
                         self.stage = GFDStages::NameProcessed;
                     } else {
                         error_message = Some(CompilerProblem::new(
@@ -116,7 +124,7 @@ impl GrammarFunctionDeclaration {
                         // A value here implies the argument name
                         Symbol::Value => {
                             self.arguments.push(Variable {
-                                name: next.text,
+                                name: next.text.to_string(),
                                 data_type: DataType::Void,
                                 value: None,
                             });
@@ -333,13 +341,13 @@ mod tests {
     use crate::lex::lex;
 
     #[test]
-    fn declare_fn_simple() {
+    fn declare_fn_simple_1() {
         let mut gfd = GrammarFunctionDeclaration::new();
         let line: &str = "fn add :: a int -> b int -> int {\n";
         let tokens = lex(line);
         // Skip the first token (the `fn` token)
         for t in tokens.into_iter().skip(1) {
-            gfd.step(t);
+            gfd.step(&t);
         }
         assert!(gfd.done);
         assert!(gfd.is_valid);
@@ -354,5 +362,31 @@ mod tests {
         assert_eq!(gfd.arguments[1].data_type, DataType::Int);
         assert!(gfd.arguments[1].value.is_none());
         assert_eq!(gfd.return_type, DataType::Int);
+    }
+
+    #[test]
+    fn declare_fn_simple_2() {
+        let mut gfd = GrammarFunctionDeclaration::new();
+        let line: &str = "fn copy_to :: old_filepath str -> new_filepath str -> void {
+        ";
+        let tokens = lex(line);
+        // Skip the first token (the `fn` token)
+        for t in tokens.into_iter().skip(1) {
+            let msg = gfd.step(&t);
+            println!("{:?}", msg);
+        }
+        assert!(gfd.done);
+        assert!(gfd.is_valid);
+        assert_eq!(gfd.fn_name, "copy_to");
+        assert_eq!(gfd.arguments.len(), 2);
+        // Arg 1
+        assert_eq!(gfd.arguments[0].name, "old_filepath");
+        assert_eq!(gfd.arguments[0].data_type, DataType::Int);
+        assert!(gfd.arguments[0].value.is_none());
+        // Arg 2
+        assert_eq!(gfd.arguments[1].name, "new_filepath");
+        assert_eq!(gfd.arguments[1].data_type, DataType::Str);
+        assert!(gfd.arguments[1].value.is_none());
+        assert_eq!(gfd.return_type, DataType::Void);
     }
 }
