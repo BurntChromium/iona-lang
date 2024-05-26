@@ -4,16 +4,15 @@
 //!
 //! We have a small number of grammars (7) because the language has a strict structure -- each line must belong to one these classes of behavior. The list of grammars corresponds to the node types.
 
+use std::fmt::Debug;
+
 use crate::compiler_errors::{CompilerProblem, ProblemClass};
 use crate::lex::{Symbol, Token};
 use crate::parse::{DataType, Variable};
 use crate::properties;
 
-#[derive(Debug)]
-pub enum Grammar {
-    FunctionDeclaration(GrammarFunctionDeclaration),
-    Properties(GrammarProperties),
-    VariableAssignment(GrammarVariableAssignments),
+pub trait Grammar: Debug {
+    fn step(&mut self, next: &Token) -> Option<CompilerProblem>;
 }
 
 // -------------------- Grammar: Functions --------------------
@@ -57,9 +56,11 @@ impl GrammarFunctionDeclaration {
             return_type: DataType::Void,
         }
     }
+}
 
+impl Grammar for GrammarFunctionDeclaration {
     /// Steps forward through a state machine, returning optional error message
-    pub fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
+    fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
         if self.done {
             return None;
         }
@@ -265,7 +266,7 @@ pub struct GrammarProperties {
 }
 
 impl GrammarProperties {
-    fn new() -> GrammarProperties {
+    pub fn new() -> GrammarProperties {
         GrammarProperties {
             is_valid: true,
             done: false,
@@ -281,7 +282,7 @@ impl GrammarProperties {
     ///
     /// 0. Begin, expect semi-colon
     /// 1. Has double colon, expect values or new line
-    fn step(&mut self, next: Token) -> Option<String> {
+    pub fn step(&mut self, next: Token) -> Option<String> {
         let mut error_message: Option<String> = None;
         match self.stage {
             GPStages::Initialized => match next.symbol {

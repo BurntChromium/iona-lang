@@ -5,7 +5,7 @@
 use std::fmt::Debug;
 
 use crate::compiler_errors::CompilerProblem;
-use crate::grammars::{Grammar, GrammarFunctionDeclaration};
+use crate::grammars::{Grammar, GrammarFunctionDeclaration, GrammarProperties};
 use crate::lex::{Symbol, Token};
 
 /// Object represents something that has been parsed
@@ -44,12 +44,12 @@ pub trait Data: Debug {}
 #[derive(Debug)]
 pub struct Node {
     pub node_type: NodeType,
-    pub grammar: Grammar,
+    pub grammar: Box<dyn Grammar>,
     pub source_line: usize,
 }
 
 impl Node {
-    pub fn new(node_type: NodeType, grammar: Grammar, source_line: usize) -> Node {
+    pub fn new(node_type: NodeType, grammar: Box<dyn Grammar>, source_line: usize) -> Node {
         Node {
             node_type,
             grammar,
@@ -82,40 +82,40 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, Vec<CompilerProblem>> {
     while let Some(token) = iterator.next() {
         // On a match, grab all tokens in the same line
         // Map the appropriate grammar to that line of tokens, and accumulate any errors
-        match token.symbol {
-            Symbol::Import => {}
-            Symbol::FunctionDeclare => {
-                let mut grammar = GrammarFunctionDeclaration::new();
-                let mut errors: Vec<Option<CompilerProblem>> = Vec::new();
-                let future = iterator.clone().peekable();
-                for t in future {
-                    if t.line == token.line {
-                        errors.push(grammar.step(t));
-                    } else {
-                        break;
-                    }
-                }
-                // Then force the iterator to catch up
-                iterator.nth(errors.len());
-                // Check for errors (this happens after skip because consumes iterator)
-                let mut okay = true;
-                for e in errors {
-                    if let Some(problem) = e {
-                        error_list.push(problem);
-                        okay = false;
-                    }
-                }
-                if okay {
-                    nodes.push(Node::new(
-                        NodeType::FunctionDeclaration,
-                        Grammar::FunctionDeclaration(grammar),
-                        token.line,
-                    ));
-                }
+        let mut grammar: Box<dyn Grammar> = match token.symbol {
+            Symbol::Import => Box::new(GrammarFunctionDeclaration::new()),
+            Symbol::FunctionDeclare => Box::new(GrammarFunctionDeclaration::new()),
+            Symbol::PropertyDeclaration => Box::new(GrammarFunctionDeclaration::new()),
+            Symbol::ContractPre | Symbol::ContractPost | Symbol::ContractInvariant => {
+                Box::new(GrammarFunctionDeclaration::new())
             }
-            Symbol::PropertyDeclaration => {}
-            Symbol::ContractPre | Symbol::ContractPost | Symbol::ContractInvariant => {}
-            _ => {}
+            _ => Box::new(GrammarFunctionDeclaration::new()),
+        };
+        let mut errors: Vec<Option<CompilerProblem>> = Vec::new();
+        let future = iterator.clone().peekable();
+        for t in future {
+            if t.line == token.line {
+                errors.push(grammar.step(t));
+            } else {
+                break;
+            }
+        }
+        // Then force the iterator to catch up
+        iterator.nth(errors.len());
+        // Check for errors (this happens after skip because consumes iterator)
+        let mut okay = true;
+        for e in errors {
+            if let Some(problem) = e {
+                error_list.push(problem);
+                okay = false;
+            }
+        }
+        if okay {
+            nodes.push(Node::new(
+                NodeType::FunctionDeclaration,
+                grammar,
+                token.line,
+            ));
         }
     }
     // Return or provide a list of errors
