@@ -115,24 +115,28 @@ pub fn lex(input: &str) -> Vec<Token> {
     for (line_index, line) in input.lines().enumerate() {
         // Split on some standard whitespace
         let words = line.split(&[' ', '\t', '\r']);
-        for (word_index, word) in words.enumerate() {
+        // Using `for (word_index, word) in words.enumerate()` gives the wrong indices
+        let mut word_index: usize = 0;
+        for word in words {
             // Handle exceptions to the "partition by space" rule
             if word.is_empty() {
                 // Skip empty lines
                 continue;
-            } else if word.starts_with('(') || word.ends_with(')') {
+            } else if (word.starts_with('(') || word.ends_with(')')) && word.len() > 1 {
                 // Handle parenthesis
                 let mut offset_start = 0usize;
                 let mut offset_end = word.len();
+                let mut deferred_closing_parens = 0usize;
                 // ASSUME that '(' always appears at beginning, ')' appears at end
                 for char in word.chars() {
                     if char == '(' {
                         offset_start += 1;
                         tokens.push(Token::new("(", line_index, word_index));
+                        word_index += 1;
                     }
                     if char == ')' {
                         offset_end -= 1;
-                        tokens.push(Token::new(")", line_index, word_index));
+                        deferred_closing_parens += 1;
                     }
                 }
                 tokens.push(Token::new(
@@ -140,14 +144,25 @@ pub fn lex(input: &str) -> Vec<Token> {
                     line_index,
                     word_index,
                 ));
+                word_index += 1;
+                for i in 0..deferred_closing_parens {
+                    tokens.push(Token::new(")", line_index, word_index));
+                    word_index += 1;
+                }
             } else {
                 // Default case
                 tokens.push(Token::new(word, line_index, word_index));
+                word_index += 1;
             }
         }
-        // Add new line separator
-        tokens.push(Token::new("\n", line_index, 0));
+        // Add new line separator token
+        if let Some(t) = tokens.last() {
+            tokens.push(Token::new("\n", line_index, t.word + 1));
+        } else {
+            tokens.push(Token::new("\n", line_index, 0));
+        }
     }
+    // Pop the trailing newline we inserted
     _ = tokens.pop();
     tokens
 }
@@ -257,7 +272,6 @@ mod tests {
         ];
         let tokens = lex(program);
         let actual = tokens.iter().map(|t| t.symbol).collect::<Vec<Symbol>>();
-        println!("{:#?}", tokens);
         assert_eq!(actual, expected);
         assert_eq!(tokens[7].line, 1);
         assert_eq!(tokens[7].word, 0);
