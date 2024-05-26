@@ -85,7 +85,7 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, Vec<CompilerProblem>> {
         let mut grammar: Box<dyn Grammar> = match token.symbol {
             Symbol::Import => Box::new(GrammarFunctionDeclaration::new()),
             Symbol::FunctionDeclare => Box::new(GrammarFunctionDeclaration::new()),
-            Symbol::PropertyDeclaration => Box::new(GrammarFunctionDeclaration::new()),
+            Symbol::PropertyDeclaration => Box::new(GrammarProperties::new()),
             Symbol::ContractPre | Symbol::ContractPost | Symbol::ContractInvariant => {
                 Box::new(GrammarFunctionDeclaration::new())
             }

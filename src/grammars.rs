@@ -275,15 +275,17 @@ impl GrammarProperties {
             p_list: Vec::<properties::Properties>::new(),
         }
     }
+}
 
+impl Grammar for GrammarProperties {
     /// Iterate through the line
     ///
     /// Stages:
     ///
     /// 0. Begin, expect semi-colon
     /// 1. Has double colon, expect values or new line
-    pub fn step(&mut self, next: Token) -> Option<String> {
-        let mut error_message: Option<String> = None;
+    fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
+        let mut error_message: Option<CompilerProblem> = None;
         match self.stage {
             GPStages::Initialized => match next.symbol {
                 Symbol::DoubleColon => {
@@ -292,7 +294,16 @@ impl GrammarProperties {
                 _ => {
                     self.is_valid = false;
                     self.done = true;
-                    error_message = Some(format!("property list declared on line {} is invalid. Should be `#Properties :: A B C`.", next.line));
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!(
+                            "property list is invalid - expected a `::` but found {}",
+                            next.text
+                        ),
+                        "a property list should look like this: `#Properties :: A B C`.",
+                        next.line,
+                        next.word,
+                    ));
                 }
             },
             GPStages::ExpectValues => match next.symbol {
@@ -302,7 +313,13 @@ impl GrammarProperties {
                     _ => {
                         self.is_valid = false;
                         self.done = true;
-                        error_message = Some(format!("property list declared on line {} is invalid. Unrecognized property {}. Valid properties are:\n{:?}", next.line, next.text, properties::PROPERTY_LIST));
+                        error_message = Some(CompilerProblem::new(
+                            ProblemClass::Error,
+                            &format!("unrecognized property {}.", next.text),
+                            &format!("valid properties are:\n{:?}", properties::PROPERTY_LIST),
+                            next.line,
+                            next.word,
+                        ));
                     }
                 },
                 Symbol::Newline => {
@@ -314,7 +331,13 @@ impl GrammarProperties {
                 _ => {
                     self.is_valid = false;
                     self.done = true;
-                    error_message = Some(format!("Property list declared on line {} is invalid. Expected a valid property name or a new line, but received an unexpected token instead. The offending token is {}, which has symbol {:?}.", next.line, next.text, next.symbol));
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!("expected a valid property name or a new line, but received an unexpected token instead. the offending token is {}, which has symbol {:?}.", next.text, next.symbol),
+                        "a property list should look like this: `#Properties :: A B C`.",
+                        next.line,
+                        next.word,
+                    ));
                 }
             },
         }
