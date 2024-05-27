@@ -1,4 +1,4 @@
-//! Grammars define the permissible syntax of a sequence of tokens
+//! Grammars define the permissible syntax of a sequence of tokens. Each line has one (and only one) possible grammar.
 //!
 //! Grammars are essentially large state machines and look "kind of like" a regex. The difference between the grammars here and the regex is conditional behavior.
 //!

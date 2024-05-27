@@ -1,6 +1,8 @@
 //! Parse constructs an abstract syntax tree or equivalent
 //!
-//! Organizational note: the syntax of permissible tokens is defined by the `grammar` crate.
+//! Organizational note: the arrangements of permissible token sequences are defined by the `grammar` crate. Each line of Iona code corresponds to one singular Grammar, and can be parsed into that grammar independently. 
+//! 
+//! We represent our AST as a flat list of `Nodes`, and each `Node` is assigned a Grammar and some metadata. 
 
 use std::fmt::Debug;
 
