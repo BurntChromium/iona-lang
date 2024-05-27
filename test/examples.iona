@@ -25,7 +25,7 @@ fn div :: a int -> b int -> int {
 
 fn read_modify_update :: filepath str -> void {
     #Properties :: Export
-    #Requirements :: ReadFile WriteFile 
+    #Permissions :: ReadFile WriteFile 
     let data :: str mut = read_file filepath // `filepath` points to a list
     set data @ 0 = "a" // set first entry to `a` 
     write_file data filepath // write_file data back out
@@ -33,7 +33,7 @@ fn read_modify_update :: filepath str -> void {
 
 fn copy_to :: old_filepath str -> new_filepath str -> void {
     #Properties :: Export
-    #Requirements :: ReadFile WriteFile
+    #Permissions :: ReadFile WriteFile
     let data :: str = read_file old_filepath
     write_file data new_filepath
 }
