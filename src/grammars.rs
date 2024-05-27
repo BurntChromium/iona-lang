@@ -7,8 +7,8 @@
 use std::fmt::Debug;
 
 use crate::compiler_errors::{CompilerProblem, ProblemClass};
-use crate::lex::{Symbol, Token};
-use crate::parse::{Data, DataType, Variable};
+use crate::lex::{Symbol, Token, BANNED_RHS_SYMBOLS};
+use crate::parse::{DataType, Variable};
 use crate::properties;
 
 pub trait Grammar: Debug {
@@ -484,8 +484,8 @@ impl Grammar for GrammarVariableAssignments {
                     self.done = true;
                 }
             },
-            VariableAssignmentStages::HandlingValues => match next.symbol {
-                Symbol::Newline => {
+            VariableAssignmentStages::HandlingValues => {
+                if next.symbol == Symbol::Newline {
                     if self.arguments.is_empty() {
                         error_message = Some(
                             CompilerProblem::new(ProblemClass::Error, &format!("expected an expression (a 'right hand side') for the value of {}, but received a newline instead", self.name), "provide a value for the variable", next.line, next.word)
@@ -495,41 +495,23 @@ impl Grammar for GrammarVariableAssignments {
                     }
                 }
                 // These symbols are not allowed on RHS of expression
-                Symbol::FunctionDeclare
-                | Symbol::DoubleColon
-                | Symbol::Return
-                | Symbol::Import
-                | Symbol::From
-                | Symbol::PropertyDeclaration
-                | Symbol::PermissionsDeclaration
-                | Symbol::ContractPre
-                | Symbol::ContractPost
-                | Symbol::ContractInvariant
-                | Symbol::Let
-                | Symbol::Mut
-                | Symbol::TypeBool
-                | Symbol::TypeFloat
-                | Symbol::TypeInt
-                | Symbol::TypeStr
-                | Symbol::TypeVoid => {
-                    if self.arguments.is_empty() {
-                        error_message = Some(CompilerProblem::new(
-                            ProblemClass::Error,
-                            &format!(
-                                "received an illegal keyword in the assignment of {}: {}",
-                                self.name, next.text
-                            ),
-                            "your variable assignment should be an expression",
-                            next.line,
-                            next.word,
-                        ));
-                        self.is_valid = false;
-                        self.done = true;
-                    }
+                else if BANNED_RHS_SYMBOLS.contains(&next.symbol) {
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!(
+                            "received an illegal keyword in the assignment of {}: {}",
+                            self.name, next.text
+                        ),
+                        "your variable assignment should be an expression",
+                        next.line,
+                        next.word,
+                    ));
+                    self.is_valid = false;
+                    self.done = true;
+                } else {
+                    self.arguments.push(next.clone())
                 }
-                _ => self.arguments.push(next.clone()),
-            },
-            _ => {}
+            }
         }
         error_message
     }

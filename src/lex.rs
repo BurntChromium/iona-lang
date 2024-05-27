@@ -92,6 +92,27 @@ impl Symbol {
     }
 }
 
+/// These symbols are banned on the RHS of any expression
+pub const BANNED_RHS_SYMBOLS: [Symbol; 17] = [
+    Symbol::FunctionDeclare,
+    Symbol::DoubleColon,
+    Symbol::Return,
+    Symbol::Import,
+    Symbol::From,
+    Symbol::PropertyDeclaration,
+    Symbol::PermissionsDeclaration,
+    Symbol::ContractPre,
+    Symbol::ContractPost,
+    Symbol::ContractInvariant,
+    Symbol::Let,
+    Symbol::Mut,
+    Symbol::TypeBool,
+    Symbol::TypeFloat,
+    Symbol::TypeInt,
+    Symbol::TypeStr,
+    Symbol::TypeVoid,
+];
+
 /// A token is a symbol and its context in the source code
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Token {
