@@ -40,6 +40,7 @@ pub enum Symbol {
     TypeInt,
     TypeBool,
     TypeVoid,
+    TypeFloat,
     At,
 }
 
@@ -83,6 +84,7 @@ impl Symbol {
             "str" => Symbol::TypeStr,
             "int" => Symbol::TypeInt,
             "bool" => Symbol::TypeBool,
+            "float" => Symbol::TypeFloat,
             "void" => Symbol::TypeVoid,
             "@" => Symbol::At,
             _ => Symbol::Value,
@@ -91,7 +93,7 @@ impl Symbol {
 }
 
 /// A token is a symbol and its context in the source code
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Token {
     pub text: String,
     pub symbol: Symbol,

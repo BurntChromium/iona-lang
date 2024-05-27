@@ -52,24 +52,35 @@ impl CompilerProblem {
 pub fn display_problem(program_text: &str, message_context: &str, problem: CompilerProblem) {
     // Context is 3 lines: the line above, the problem line, and the line below
     let top_line = problem.line.saturating_sub(2);
-    let mut line_number = top_line;
-    let context = program_text
-        .lines()
-        .skip(top_line)
-        .take(3)
-        .map(|l| {
-            line_number += 1;
-            format!(" \x1b[1;34m{line_number} |\x1b[0m {}", l)
-        })
-        .collect::<String>();
     let color_hex_code: &str = match problem.class {
         ProblemClass::Error => "\x1b[1;31m",
         ProblemClass::Warning => "\x1b[1;33m",
         ProblemClass::Lint => "\x1b[1;35m",
     };
+    let mut line_number = top_line;
+    let context = program_text
+        .lines()
+        .enumerate()
+        .skip(top_line)
+        .take(3)
+        .map(|(context_index, line)| {
+            line_number += 1;
+            // Color the middle line (index 1)
+            if context_index == 1 {
+                format!(
+                    "   \x1b[1;34m{line_number} |\x1b[0m {}{}\x1b[0m\n",
+                    color_hex_code, line
+                )
+            } else {
+                format!("   \x1b[1;34m{line_number} |\x1b[0m {}\n", line)
+            }
+        })
+        .collect::<String>();
+
     println!(
         // Hex codes are for colored output
-        "{color_hex_code}{}\x1b[0m: {message_context} on line {}: {}\n{context}\n\x1b[1;34m hint:\x1b[0m {}",
-        problem.class, problem.line, problem.message, problem.hint
+        // We have to push line number up by 1 b/c zero-index vs 1-index
+        "{color_hex_code}{}\x1b[0m: {message_context} on line {}: {}\n{}\n\x1b[1;34m hint:\x1b[0m {}",
+        problem.class, problem.line+1, problem.message, context.trim_end(), problem.hint
     );
 }

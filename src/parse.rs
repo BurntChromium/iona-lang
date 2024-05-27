@@ -1,16 +1,18 @@
 //! Parse constructs an abstract syntax tree or equivalent
 //!
-//! Organizational note: the arrangements of permissible token sequences are defined by the `grammar` crate. Each line of Iona code corresponds to one singular Grammar, and can be parsed into that grammar independently. 
-//! 
-//! We represent our AST as a flat list of `Nodes`, and each `Node` is assigned a Grammar and some metadata. 
+//! Organizational note: the arrangements of permissible token sequences are defined by the `grammar` crate. Each line of Iona code corresponds to one singular Grammar, and can be parsed into that grammar independently.
+//!
+//! We represent our AST as a flat list of `Nodes`, and each `Node` is assigned a Grammar and some metadata.
 
 use std::fmt::Debug;
 
 use crate::compiler_errors::CompilerProblem;
-use crate::grammars::{Grammar, GrammarFunctionDeclaration, GrammarProperties};
+use crate::grammars::{
+    Grammar, GrammarFunctionDeclaration, GrammarProperties, GrammarVariableAssignments,
+};
 use crate::lex::{Symbol, Token};
 
-/// Object represents something that has been parsed
+/// Nodes are objects corresponding to an IR, and each node has exactly one type (each line of code has one effect, or "role" to play).
 ///
 /// Permissible Nodes
 ///
@@ -85,9 +87,15 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, Vec<CompilerProblem>> {
         // On a match, grab all tokens in the same line
         // Map the appropriate grammar to that line of tokens, and accumulate any errors
         let mut grammar: Box<dyn Grammar> = match token.symbol {
+            // Handle imports
             Symbol::Import => Box::new(GrammarFunctionDeclaration::new()),
+            // Handle function declaration
             Symbol::FunctionDeclare => Box::new(GrammarFunctionDeclaration::new()),
+            // Handle property declarations
             Symbol::PropertyDeclaration => Box::new(GrammarProperties::new()),
+            // Handle variable declarations
+            Symbol::Set | Symbol::Let => Box::new(GrammarVariableAssignments::new()),
+            // Handle contracts
             Symbol::ContractPre | Symbol::ContractPost | Symbol::ContractInvariant => {
                 Box::new(GrammarFunctionDeclaration::new())
             }

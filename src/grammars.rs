@@ -8,7 +8,7 @@ use std::fmt::Debug;
 
 use crate::compiler_errors::{CompilerProblem, ProblemClass};
 use crate::lex::{Symbol, Token};
-use crate::parse::{DataType, Variable};
+use crate::parse::{Data, DataType, Variable};
 use crate::properties;
 
 pub trait Grammar: Debug {
@@ -360,8 +360,10 @@ enum AssignmentTypes {
 #[derive(Debug)]
 enum VariableAssignmentStages {
     FindingName,
+    CheckingForIndex,
+    GettingIndexValue,
     DeclaringType,
-    CheckingIndexing,
+    SeekingTypeName,
     HandlingValues,
 }
 
@@ -372,9 +374,11 @@ pub struct GrammarVariableAssignments {
     stage: VariableAssignmentStages,
     last_symbol: Symbol,
     assignment_type: AssignmentTypes,
+    type_provided: bool, // if provided, type check (later), otherwise run type inference (later)
     data_type: DataType,
     name: String,
     mutable: bool,
+    index_text: Option<String>,
     arguments: Vec<Token>,
 }
 
@@ -386,9 +390,11 @@ impl GrammarVariableAssignments {
             stage: VariableAssignmentStages::DeclaringType,
             last_symbol: Symbol::Let, // May not be strictly true, but not relevant
             assignment_type: AssignmentTypes::Initialize,
+            type_provided: false,
             data_type: DataType::Void,
             name: "unknown".to_string(),
             mutable: false,
+            index_text: None,
             arguments: Vec::<Token>::new(),
         }
     }
@@ -401,7 +407,18 @@ impl Grammar for GrammarVariableAssignments {
             VariableAssignmentStages::FindingName => match next.symbol {
                 Symbol::Value => {
                     if next.text.is_ascii() {
+                        self.name = next.text.to_string();
+                        self.stage = VariableAssignmentStages::DeclaringType;
                     } else {
+                        CompilerProblem::new(
+                            ProblemClass::Error,
+                            &format!("this variable's name is not valid ASCII: {}", next.text),
+                            "rename the variable",
+                            next.line,
+                            next.word,
+                        );
+                        self.is_valid = false;
+                        self.done = true;
                     }
                 }
                 _ => {
@@ -411,6 +428,106 @@ impl Grammar for GrammarVariableAssignments {
                     self.is_valid = false;
                     self.done = true;
                 }
+            },
+            VariableAssignmentStages::CheckingForIndex => match next.symbol {
+                Symbol::At => self.stage = VariableAssignmentStages::GettingIndexValue,
+                _ => self.stage = VariableAssignmentStages::DeclaringType,
+            },
+            VariableAssignmentStages::GettingIndexValue => match next.symbol {
+                Symbol::Value => self.index_text = Some(next.text.to_string()),
+                _ => {
+                    error_message = Some(
+                        CompilerProblem::new(ProblemClass::Error, &format!("expected an index, but found a system reserved keyword instead (found `{}`", next.text), "indices should be either a number `37` or a range `0..2`", next.line, next.word)
+                    );
+                    self.is_valid = false;
+                    self.done = true;
+                }
+            },
+            VariableAssignmentStages::DeclaringType => match next.symbol {
+                // Double colon implies we're going to get a type
+                Symbol::DoubleColon => {
+                    self.type_provided = true;
+                    self.stage = VariableAssignmentStages::SeekingTypeName;
+                }
+                // Equals sign implies no type present
+                Symbol::EqualSign => self.stage = VariableAssignmentStages::HandlingValues,
+                _ => {
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!(
+                            "expected a `::` or a `=` after the variable name, but found `{}`",
+                            next.text
+                        ),
+                        "declare a variable's type with `::` or give it a value of `=`",
+                        next.line,
+                        next.word,
+                    ));
+                    self.is_valid = false;
+                    self.done = true;
+                }
+            },
+            VariableAssignmentStages::SeekingTypeName => match next.symbol {
+                Symbol::TypeBool => self.data_type = DataType::Bool,
+                Symbol::TypeInt => self.data_type = DataType::Int,
+                Symbol::TypeFloat => self.data_type = DataType::Float,
+                Symbol::TypeStr => self.data_type = DataType::Str,
+                Symbol::TypeVoid => self.data_type = DataType::Void,
+                _ => {
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!("expected a type name, but found `{}`", next.text),
+                        "provide a valid type such as `str` or `int`",
+                        next.line,
+                        next.word,
+                    ));
+                    self.is_valid = false;
+                    self.done = true;
+                }
+            },
+            VariableAssignmentStages::HandlingValues => match next.symbol {
+                Symbol::Newline => {
+                    if self.arguments.is_empty() {
+                        error_message = Some(
+                            CompilerProblem::new(ProblemClass::Error, &format!("expected an expression (a 'right hand side') for the value of {}, but received a newline instead", self.name), "provide a value for the variable", next.line, next.word)
+                        );
+                        self.is_valid = false;
+                        self.done = true;
+                    }
+                }
+                // These symbols are not allowed on RHS of expression
+                Symbol::FunctionDeclare
+                | Symbol::DoubleColon
+                | Symbol::Return
+                | Symbol::Import
+                | Symbol::From
+                | Symbol::PropertyDeclaration
+                | Symbol::PermissionsDeclaration
+                | Symbol::ContractPre
+                | Symbol::ContractPost
+                | Symbol::ContractInvariant
+                | Symbol::Let
+                | Symbol::Mut
+                | Symbol::TypeBool
+                | Symbol::TypeFloat
+                | Symbol::TypeInt
+                | Symbol::TypeStr
+                | Symbol::TypeVoid => {
+                    if self.arguments.is_empty() {
+                        error_message = Some(CompilerProblem::new(
+                            ProblemClass::Error,
+                            &format!(
+                                "received an illegal keyword in the assignment of {}: {}",
+                                self.name, next.text
+                            ),
+                            "your variable assignment should be an expression",
+                            next.line,
+                            next.word,
+                        ));
+                        self.is_valid = false;
+                        self.done = true;
+                    }
+                }
+                _ => self.arguments.push(next.clone()),
             },
             _ => {}
         }
