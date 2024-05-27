@@ -40,6 +40,7 @@ pub enum Symbol {
     TypeInt,
     TypeBool,
     TypeVoid,
+    At,
 }
 
 impl Symbol {
@@ -83,6 +84,7 @@ impl Symbol {
             "int" => Symbol::TypeInt,
             "bool" => Symbol::TypeBool,
             "void" => Symbol::TypeVoid,
+            "@" => Symbol::At,
             _ => Symbol::Value,
         }
     }

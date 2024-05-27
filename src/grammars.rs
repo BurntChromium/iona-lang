@@ -353,15 +353,15 @@ impl Grammar for GrammarProperties {
 
 #[derive(Debug)]
 enum AssignmentTypes {
-    Const,      // const variable
     Initialize, // let x = ...
     Mutate,     // set x = ...
 }
 
 #[derive(Debug)]
 enum VariableAssignmentStages {
-    DeclaringType,
     FindingName,
+    DeclaringType,
+    CheckingIndexing,
     HandlingValues,
 }
 
@@ -374,8 +374,51 @@ pub struct GrammarVariableAssignments {
     assignment_type: AssignmentTypes,
     data_type: DataType,
     name: String,
+    mutable: bool,
     arguments: Vec<Token>,
 }
+
+impl GrammarVariableAssignments {
+    pub fn new() -> GrammarVariableAssignments {
+        GrammarVariableAssignments {
+            is_valid: true,
+            done: false,
+            stage: VariableAssignmentStages::DeclaringType,
+            last_symbol: Symbol::Let, // May not be strictly true, but not relevant
+            assignment_type: AssignmentTypes::Initialize,
+            data_type: DataType::Void,
+            name: "unknown".to_string(),
+            mutable: false,
+            arguments: Vec::<Token>::new(),
+        }
+    }
+}
+
+impl Grammar for GrammarVariableAssignments {
+    fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
+        let mut error_message: Option<CompilerProblem> = None;
+        match self.stage {
+            VariableAssignmentStages::FindingName => match next.symbol {
+                Symbol::Value => {
+                    if next.text.is_ascii() {
+                    } else {
+                    }
+                }
+                _ => {
+                    error_message = Some(
+                        CompilerProblem::new(ProblemClass::Error, &format!("expected a variable name, but found a system reserved keyword instead (found `{}`", next.text), "try using a different variable name", next.line, next.word)
+                    );
+                    self.is_valid = false;
+                    self.done = true;
+                }
+            },
+            _ => {}
+        }
+        error_message
+    }
+}
+
+// -------------------- Unit Tests --------------------
 
 #[cfg(test)]
 mod tests {
