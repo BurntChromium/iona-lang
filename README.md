@@ -59,7 +59,7 @@ It compiles, great! You upload it and wait. An unsuspecting user imports your li
 ```
 import fast_sqrt from sketchy_library
 
-fn main {
+fn main -> Void {
     let data = [1.0, 4.0, 9.0]
     map fast_sqrt data
 }
