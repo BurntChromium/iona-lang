@@ -74,13 +74,18 @@ pub struct Variable {
 
 /// Parse a list of tokens
 ///
+/// ### Parameters
+///
+/// - tokens: a list of tokens from the lexer
+/// - fused_mode: if true, assume the input is tokens from a single line (i.e. operating in the "fused-lex-and-parse" mode), and if false, then assume the input is from a whole file or set of files
+///
 /// Basic idea
 /// - On a new line, identify the appropriate grammar
 /// - Take all tokens within that line
 /// - For each token in the line, feed it through the grammar
 /// - Along the way, accumulate any errors we find
-/// - When all lines have been mapped, return an Error if we have found any problems, or return a list of nodes if we have not
-pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, Vec<CompilerProblem>> {
+/// - When all lines have been mapped, return all nodes and all errors and let the caller decide what to do with it (otherwise, we would swallow warnings and lints)
+pub fn parse(tokens: Vec<Token>, fused_mode: bool) -> (Vec<Node>, Vec<CompilerProblem>) {
     let mut nodes = Vec::<Node>::new();
     let mut error_list: Vec<CompilerProblem> = Vec::<CompilerProblem>::new();
     // We will be skipping the iterator from inside the loop, so we do something a little weird looking
@@ -121,8 +126,10 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, Vec<CompilerProblem>> {
                 break;
             }
         }
-        // Then force the iterator to catch up
-        iterator.nth(errors.len());
+        // Then force the iterator to catch up (if NOT in fused mode => fused mode implies single line of source code)
+        if !fused_mode {
+            iterator.nth(errors.len());
+        }
         // Check for errors (this happens after skip because consumes iterator)
         let mut okay = true;
         for e in errors {
@@ -140,9 +147,5 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, Vec<CompilerProblem>> {
         }
     }
     // Return or provide a list of errors
-    if error_list.is_empty() {
-        Ok(nodes)
-    } else {
-        Err(error_list)
-    }
+    (nodes, error_list)
 }

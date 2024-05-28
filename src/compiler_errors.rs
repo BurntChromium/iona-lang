@@ -2,7 +2,7 @@
 
 use std::fmt::Display;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Clone, Copy)]
 pub enum ProblemClass {
     Lint,
     Warning,
@@ -21,7 +21,7 @@ impl Display for ProblemClass {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct CompilerProblem {
-    class: ProblemClass,
+    pub class: ProblemClass,
     pub message: String,
     hint: String,
     line: usize,

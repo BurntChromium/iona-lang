@@ -1,1 +1,1 @@
-let a @ 5 :: auto mut = 37
+let a = 37

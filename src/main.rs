@@ -11,9 +11,11 @@ mod lex;
 mod parse;
 mod properties;
 
-use crate::compiler_errors::display_problem;
+use crate::compiler_errors::{display_problem, ProblemClass};
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // Initialize logging level
+    let log_level: ProblemClass = ProblemClass::Lint;
     // Capture command line
     let args: Vec<String> = env::args().collect();
     let file: &str = if args.len() == 1 {
@@ -36,18 +38,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Lex the file
     let tokens = lex::lex(&program_root);
     // Parse the file
-    let nodes_or_errors = parse::parse(tokens);
-    match nodes_or_errors {
-        Ok(_) => {
-            let elapsed = now.elapsed();
-            println!("\x1b[1;32mFinished\x1b[0m compiling in {:.2?}", elapsed);
-            Ok(())
+    let (_, errors) = parse::parse(tokens, false);
+    let mut okay: bool = true;
+    let elapsed = now.elapsed();
+    println!("Finished compiling in {:.2?}", elapsed);
+    for err in errors {
+        if err.class == ProblemClass::Error {
+            okay = false;
         }
-        Err(problems) => {
-            for problem in problems {
-                display_problem(&program_root, "parsing failed", problem);
-            }
-            Err("fatal error occurred during parsing".into())
+        if err.class >= log_level {
+            display_problem(&program_root, "issue during parsing", err);
         }
+    }
+    if okay {
+        Ok(())
+    } else {
+        Err("program failed during parsing".into())
     }
 }

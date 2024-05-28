@@ -455,7 +455,7 @@ impl Grammar for GrammarProperties {
 
 // -------------------- Grammar: Variable Assignment --------------------
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum AssignmentTypes {
     Initialize, // let x = ...
     Mutate,     // set x = ...
@@ -567,7 +567,22 @@ impl Grammar for GrammarVariableAssignments {
                 // Equals sign implies no type present
                 Symbol::EqualSign => {
                     self.type_provided = false;
-                    self.stage = VariableAssignmentStages::HandlingValues
+                    self.stage = VariableAssignmentStages::HandlingValues;
+                    let keyword = if self.assignment_type == AssignmentTypes::Initialize {
+                        "let"
+                    } else {
+                        "set"
+                    };
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Lint,
+                        &format!(
+                            "use `auto` with `{}` to be explicit about your type inference",
+                            self.name
+                        ),
+                        &format!("try this: `{keyword} {} :: auto = ...`", self.name),
+                        next.line,
+                        next.word,
+                    ));
                 }
                 _ => {
                     error_message = Some(CompilerProblem::new(
@@ -618,6 +633,21 @@ impl Grammar for GrammarVariableAssignments {
                     self.type_provided = false;
                     self.mutable = true;
                     self.stage = VariableAssignmentStages::HandlingValues;
+                    let keyword = if self.assignment_type == AssignmentTypes::Initialize {
+                        "let"
+                    } else {
+                        "set"
+                    };
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Lint,
+                        &format!(
+                            "use `auto` with `{}` to be explicit about your type inference",
+                            self.name
+                        ),
+                        &format!("try this: `{keyword} {} :: auto mut = ...`", self.name),
+                        next.line,
+                        next.word,
+                    ));
                 }
                 _ => {
                     error_message = Some(CompilerProblem::new(
