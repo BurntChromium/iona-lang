@@ -60,20 +60,11 @@ pub fn display_problem(program_text: &str, message_context: &str, problem: Compi
     let mut line_number = top_line;
     let context = program_text
         .lines()
-        .enumerate()
         .skip(top_line)
         .take(3)
-        .map(|(context_index, line)| {
+        .map(|line| {
             line_number += 1;
-            // Color the middle line (index 1)
-            if context_index == 1 {
-                format!(
-                    "   \x1b[1;34m{line_number} |\x1b[0m {}{}\x1b[0m\n",
-                    color_hex_code, line
-                )
-            } else {
-                format!("   \x1b[1;34m{line_number} |\x1b[0m {}\n", line)
-            }
+            format!("   \x1b[1;34m{line_number} |\x1b[0m {}\n", line)
         })
         .collect::<String>();
 

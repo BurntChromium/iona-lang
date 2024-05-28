@@ -97,7 +97,7 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, Vec<CompilerProblem>> {
             Symbol::PropertyDeclaration => Box::new(GrammarProperties::new()),
             // Handle variable declarations
             Symbol::Set | Symbol::Let => Box::new(GrammarVariableAssignments::new(
-                if token.symbol == Symbol::Get {
+                if token.symbol == Symbol::Let {
                     grammars::AssignmentTypes::Initialize
                 } else {
                     grammars::AssignmentTypes::Mutate

@@ -552,7 +552,7 @@ impl Grammar for GrammarVariableAssignments {
                 Symbol::At => match self.assignment_type {
                     AssignmentTypes::Initialize => {
                         error_message = Some(
-                                CompilerProblem::new(ProblemClass::Error, &format!("in declaration of `{}`, cannot index into a collection when initializing a value", self.name), "initialize the collection with `let...mut`, then use `set` to mutate the element at the given index", next.line, next.word)
+                                CompilerProblem::new(ProblemClass::Error, &format!("in declaration of `{}`, cannot index into a collection when initializing a value", self.name), &format!("initialize the collection then mutate it, try this pattern: `let {} :: auto mut = ...` with `set {} @ ... = ...`", self.name, self.name), next.line, next.word)
                             );
                         self.is_valid = false;
                         self.done = true;
