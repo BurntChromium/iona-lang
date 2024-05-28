@@ -8,7 +8,8 @@ use std::fmt::Debug;
 
 use crate::compiler_errors::CompilerProblem;
 use crate::grammars::{
-    Grammar, GrammarFunctionDeclaration, GrammarProperties, GrammarVariableAssignments,
+    self, Grammar, GrammarFunctionDeclaration, GrammarImports, GrammarProperties,
+    GrammarVariableAssignments,
 };
 use crate::lex::{Symbol, Token};
 
@@ -34,8 +35,9 @@ pub enum NodeType {
     ImportStatement,
 }
 
+/// Primitive data types (i.e. types not held in a container or struct)
 #[derive(Debug, PartialEq, Eq)]
-pub enum DataType {
+pub enum PrimitiveDataType {
     Void,
     Int,
     Float,
@@ -65,7 +67,7 @@ impl Node {
 #[derive(Debug)]
 pub struct Variable {
     pub name: String,
-    pub data_type: DataType,
+    pub data_type: PrimitiveDataType,
     pub value: Option<Box<dyn Data>>,
 }
 
@@ -88,13 +90,19 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, Vec<CompilerProblem>> {
         // Map the appropriate grammar to that line of tokens, and accumulate any errors
         let mut grammar: Box<dyn Grammar> = match token.symbol {
             // Handle imports
-            Symbol::Import => Box::new(GrammarFunctionDeclaration::new()),
+            Symbol::Import => Box::new(GrammarImports::new()),
             // Handle function declaration
             Symbol::FunctionDeclare => Box::new(GrammarFunctionDeclaration::new()),
             // Handle property declarations
             Symbol::PropertyDeclaration => Box::new(GrammarProperties::new()),
             // Handle variable declarations
-            Symbol::Set | Symbol::Let => Box::new(GrammarVariableAssignments::new()),
+            Symbol::Set | Symbol::Let => Box::new(GrammarVariableAssignments::new(
+                if token.symbol == Symbol::Get {
+                    grammars::AssignmentTypes::Initialize
+                } else {
+                    grammars::AssignmentTypes::Mutate
+                },
+            )),
             // Handle contracts
             Symbol::ContractPre | Symbol::ContractPost | Symbol::ContractInvariant => {
                 Box::new(GrammarFunctionDeclaration::new())

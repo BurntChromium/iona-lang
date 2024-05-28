@@ -41,6 +41,7 @@ pub enum Symbol {
     TypeBool,
     TypeVoid,
     TypeFloat,
+    TypeAuto,
     At,
 }
 
@@ -86,6 +87,7 @@ impl Symbol {
             "bool" => Symbol::TypeBool,
             "float" => Symbol::TypeFloat,
             "void" => Symbol::TypeVoid,
+            "auto" => Symbol::TypeAuto,
             "@" => Symbol::At,
             _ => Symbol::Value,
         }
@@ -93,7 +95,7 @@ impl Symbol {
 }
 
 /// These symbols are banned on the RHS of any expression
-pub const BANNED_RHS_SYMBOLS: [Symbol; 17] = [
+pub const BANNED_RHS_SYMBOLS: [Symbol; 18] = [
     Symbol::FunctionDeclare,
     Symbol::DoubleColon,
     Symbol::Return,
@@ -111,6 +113,7 @@ pub const BANNED_RHS_SYMBOLS: [Symbol; 17] = [
     Symbol::TypeInt,
     Symbol::TypeStr,
     Symbol::TypeVoid,
+    Symbol::TypeAuto,
 ];
 
 /// A token is a symbol and its context in the source code

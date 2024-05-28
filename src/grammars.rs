@@ -8,11 +8,114 @@ use std::fmt::Debug;
 
 use crate::compiler_errors::{CompilerProblem, ProblemClass};
 use crate::lex::{Symbol, Token, BANNED_RHS_SYMBOLS};
-use crate::parse::{DataType, Variable};
+use crate::parse::{PrimitiveDataType, Variable};
 use crate::properties;
 
 pub trait Grammar: Debug {
     fn step(&mut self, next: &Token) -> Option<CompilerProblem>;
+}
+
+// -------------------- Grammar: Imports --------------------
+
+#[derive(Debug)]
+enum GIStages {
+    Initialized,
+    ProcessingArguments,
+    ProcessingFile,
+}
+
+/// The grammar for importing a file or functions/data
+#[derive(Debug)]
+pub struct GrammarImports {
+    is_valid: bool,
+    done: bool,
+    stage: GIStages,
+    arguments: Option<Vec<Token>>,
+    file: String,
+}
+
+impl GrammarImports {
+    pub fn new() -> GrammarImports {
+        GrammarImports {
+            is_valid: true,
+            done: false,
+            stage: GIStages::Initialized,
+            arguments: None,
+            file: "unknown".to_string(),
+        }
+    }
+}
+
+impl Grammar for GrammarImports {
+    fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
+        if self.done {
+            return None;
+        }
+        let mut error_message = None;
+        match self.stage {
+            GIStages::Initialized => {
+                // If there's a dot we're importing a file and can wrap up immediately
+                if next.text.contains(".") {
+                    self.file = next.text.to_string();
+                    self.done = true;
+                } else {
+                    // We must be importing arguments so grab the first one
+                    self.stage = GIStages::ProcessingArguments;
+                    if next.symbol == Symbol::Value {
+                        self.arguments = Some(vec![next.clone()]);
+                    } else {
+                        error_message = Some(CompilerProblem::new(
+                            ProblemClass::Error,
+                            "imported item is a reserved keyword",
+                            "check your imports",
+                            next.line,
+                            next.word,
+                        ));
+                    }
+                }
+            }
+            GIStages::ProcessingArguments => match next.symbol {
+                Symbol::From => self.stage = GIStages::ProcessingFile,
+                Symbol::Value => {
+                    if let Some(args) = &mut self.arguments {
+                        args.push(next.clone());
+                    }
+                }
+                _ => {
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!(
+                            "expected the name of an item but received a keyword: {}",
+                            next.text
+                        ),
+                        "check your imports",
+                        next.line,
+                        next.word,
+                    ));
+                }
+            },
+            // Only entered if we had arguments
+            GIStages::ProcessingFile => match next.symbol {
+                Symbol::Value => {
+                    self.file = next.text.to_string();
+                    self.done = true;
+                }
+                _ => {
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!(
+                            "expected the name of a library but received a keyword: {}",
+                            next.text
+                        ),
+                        "check your imports",
+                        next.line,
+                        next.word,
+                    ));
+                }
+            },
+        }
+        error_message
+    }
 }
 
 // -------------------- Grammar: Functions --------------------
@@ -41,7 +144,7 @@ pub struct GrammarFunctionDeclaration {
     last_symbol: Symbol,
     fn_name: String,
     arguments: Vec<Variable>,
-    return_type: DataType,
+    return_type: PrimitiveDataType,
 }
 
 impl GrammarFunctionDeclaration {
@@ -53,7 +156,7 @@ impl GrammarFunctionDeclaration {
             last_symbol: Symbol::FunctionDeclare,
             fn_name: "undefined".to_string(),
             arguments: Vec::<Variable>::new(),
-            return_type: DataType::Void,
+            return_type: PrimitiveDataType::Void,
         }
     }
 }
@@ -116,25 +219,25 @@ impl Grammar for GrammarFunctionDeclaration {
                         // If we receive a type after :: or ->, it implies that is the return type and there are no arguments
                         Symbol::TypeBool => {
                             self.stage = GFDStages::SeekingBracket;
-                            self.return_type = DataType::Bool;
+                            self.return_type = PrimitiveDataType::Bool;
                         }
                         Symbol::TypeInt => {
                             self.stage = GFDStages::SeekingBracket;
-                            self.return_type = DataType::Int;
+                            self.return_type = PrimitiveDataType::Int;
                         }
                         Symbol::TypeStr => {
                             self.stage = GFDStages::SeekingBracket;
-                            self.return_type = DataType::Str;
+                            self.return_type = PrimitiveDataType::Str;
                         }
                         Symbol::TypeVoid => {
                             self.stage = GFDStages::SeekingBracket;
-                            self.return_type = DataType::Void;
+                            self.return_type = PrimitiveDataType::Void;
                         }
                         // A value here implies the argument name
                         Symbol::Value => {
                             self.arguments.push(Variable {
                                 name: next.text.to_string(),
-                                data_type: DataType::Void,
+                                data_type: PrimitiveDataType::Void,
                                 value: None,
                             });
                         }
@@ -151,19 +254,19 @@ impl Grammar for GrammarFunctionDeclaration {
                             self.arguments
                                 .last_mut()
                                 .expect("expected argument to exist")
-                                .data_type = DataType::Bool;
+                                .data_type = PrimitiveDataType::Bool;
                         }
                         Symbol::TypeInt => {
                             self.arguments
                                 .last_mut()
                                 .expect("expected argument to exist")
-                                .data_type = DataType::Int;
+                                .data_type = PrimitiveDataType::Int;
                         }
                         Symbol::TypeStr => {
                             self.arguments
                                 .last_mut()
                                 .expect("expected argument to exist")
-                                .data_type = DataType::Str;
+                                .data_type = PrimitiveDataType::Str;
                         }
                         Symbol::TypeVoid => {
                             self.is_valid = false;
@@ -261,7 +364,6 @@ pub struct GrammarProperties {
     is_valid: bool,
     done: bool,
     stage: GPStages,
-    last_symbol: Symbol,
     p_list: Vec<properties::Properties>,
 }
 
@@ -271,7 +373,6 @@ impl GrammarProperties {
             is_valid: true,
             done: false,
             stage: GPStages::Initialized,
-            last_symbol: Symbol::PropertyDeclaration,
             p_list: Vec::<properties::Properties>::new(),
         }
     }
@@ -285,6 +386,9 @@ impl Grammar for GrammarProperties {
     /// 0. Begin, expect semi-colon
     /// 1. Has double colon, expect values or new line
     fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
+        if self.done {
+            return None;
+        }
         let mut error_message: Option<CompilerProblem> = None;
         match self.stage {
             GPStages::Initialized => match next.symbol {
@@ -352,7 +456,7 @@ impl Grammar for GrammarProperties {
 // -------------------- Grammar: Variable Assignment --------------------
 
 #[derive(Debug)]
-enum AssignmentTypes {
+pub enum AssignmentTypes {
     Initialize, // let x = ...
     Mutate,     // set x = ...
 }
@@ -364,6 +468,7 @@ enum VariableAssignmentStages {
     GettingIndexValue,
     DeclaringType,
     SeekingTypeName,
+    CheckingMutability,
     HandlingValues,
 }
 
@@ -372,10 +477,9 @@ pub struct GrammarVariableAssignments {
     is_valid: bool,
     done: bool,
     stage: VariableAssignmentStages,
-    last_symbol: Symbol,
     assignment_type: AssignmentTypes,
     type_provided: bool, // if provided, type check (later), otherwise run type inference (later)
-    data_type: DataType,
+    data_type: PrimitiveDataType,
     name: String,
     mutable: bool,
     index_text: Option<String>,
@@ -383,15 +487,14 @@ pub struct GrammarVariableAssignments {
 }
 
 impl GrammarVariableAssignments {
-    pub fn new() -> GrammarVariableAssignments {
+    pub fn new(assignment_type: AssignmentTypes) -> GrammarVariableAssignments {
         GrammarVariableAssignments {
             is_valid: true,
             done: false,
-            stage: VariableAssignmentStages::DeclaringType,
-            last_symbol: Symbol::Let, // May not be strictly true, but not relevant
-            assignment_type: AssignmentTypes::Initialize,
+            stage: VariableAssignmentStages::FindingName,
+            assignment_type,
             type_provided: false,
-            data_type: DataType::Void,
+            data_type: PrimitiveDataType::Void,
             name: "unknown".to_string(),
             mutable: false,
             index_text: None,
@@ -402,6 +505,9 @@ impl GrammarVariableAssignments {
 
 impl Grammar for GrammarVariableAssignments {
     fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
+        if self.done {
+            return None;
+        }
         let mut error_message: Option<CompilerProblem> = None;
         match self.stage {
             VariableAssignmentStages::FindingName => match next.symbol {
@@ -434,7 +540,10 @@ impl Grammar for GrammarVariableAssignments {
                 _ => self.stage = VariableAssignmentStages::DeclaringType,
             },
             VariableAssignmentStages::GettingIndexValue => match next.symbol {
-                Symbol::Value => self.index_text = Some(next.text.to_string()),
+                Symbol::Value => {
+                    self.index_text = Some(next.text.to_string());
+                    self.stage = VariableAssignmentStages::DeclaringType;
+                }
                 _ => {
                     error_message = Some(
                         CompilerProblem::new(ProblemClass::Error, &format!("expected an index, but found a system reserved keyword instead (found `{}`", next.text), "indices should be either a number `37` or a range `0..2`", next.line, next.word)
@@ -446,11 +555,13 @@ impl Grammar for GrammarVariableAssignments {
             VariableAssignmentStages::DeclaringType => match next.symbol {
                 // Double colon implies we're going to get a type
                 Symbol::DoubleColon => {
-                    self.type_provided = true;
                     self.stage = VariableAssignmentStages::SeekingTypeName;
                 }
                 // Equals sign implies no type present
-                Symbol::EqualSign => self.stage = VariableAssignmentStages::HandlingValues,
+                Symbol::EqualSign => {
+                    self.type_provided = false;
+                    self.stage = VariableAssignmentStages::HandlingValues
+                }
                 _ => {
                     error_message = Some(CompilerProblem::new(
                         ProblemClass::Error,
@@ -467,11 +578,40 @@ impl Grammar for GrammarVariableAssignments {
                 }
             },
             VariableAssignmentStages::SeekingTypeName => match next.symbol {
-                Symbol::TypeBool => self.data_type = DataType::Bool,
-                Symbol::TypeInt => self.data_type = DataType::Int,
-                Symbol::TypeFloat => self.data_type = DataType::Float,
-                Symbol::TypeStr => self.data_type = DataType::Str,
-                Symbol::TypeVoid => self.data_type = DataType::Void,
+                Symbol::TypeBool => {
+                    self.type_provided = true;
+                    self.data_type = PrimitiveDataType::Bool;
+                    self.stage = VariableAssignmentStages::CheckingMutability;
+                }
+                Symbol::TypeInt => {
+                    self.type_provided = true;
+                    self.data_type = PrimitiveDataType::Int;
+                    self.stage = VariableAssignmentStages::CheckingMutability;
+                }
+                Symbol::TypeFloat => {
+                    self.type_provided = true;
+                    self.data_type = PrimitiveDataType::Float;
+                    self.stage = VariableAssignmentStages::CheckingMutability;
+                }
+                Symbol::TypeStr => {
+                    self.type_provided = true;
+                    self.data_type = PrimitiveDataType::Str;
+                    self.stage = VariableAssignmentStages::CheckingMutability;
+                }
+                Symbol::TypeVoid => {
+                    self.type_provided = true;
+                    self.data_type = PrimitiveDataType::Void;
+                    self.stage = VariableAssignmentStages::CheckingMutability;
+                }
+                Symbol::TypeAuto => {
+                    self.type_provided = false;
+                    self.stage = VariableAssignmentStages::CheckingMutability;
+                }
+                Symbol::Mut => {
+                    self.type_provided = false;
+                    self.mutable = true;
+                    self.stage = VariableAssignmentStages::HandlingValues;
+                }
                 _ => {
                     error_message = Some(CompilerProblem::new(
                         ProblemClass::Error,
@@ -484,15 +624,41 @@ impl Grammar for GrammarVariableAssignments {
                     self.done = true;
                 }
             },
+            VariableAssignmentStages::CheckingMutability => match next.symbol {
+                Symbol::Mut => {
+                    self.mutable = true;
+                    self.stage = VariableAssignmentStages::HandlingValues;
+                }
+                Symbol::EqualSign => self.stage = VariableAssignmentStages::HandlingValues,
+                _ => {
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!("expected either `mut` or `=`, but found `{}`", next.text),
+                        "you may have more than 1 type for this variable",
+                        next.line,
+                        next.word,
+                    ));
+                    self.is_valid = false;
+                    self.done = true;
+                }
+            },
             VariableAssignmentStages::HandlingValues => {
+                // Can't (conveniently) use match here b/c of branch on banned symbols below
                 if next.symbol == Symbol::Newline {
+                    // Newline with no args == problem
                     if self.arguments.is_empty() {
                         error_message = Some(
                             CompilerProblem::new(ProblemClass::Error, &format!("expected an expression (a 'right hand side') for the value of {}, but received a newline instead", self.name), "provide a value for the variable", next.line, next.word)
                         );
                         self.is_valid = false;
                         self.done = true;
+                    } else {
+                        // Newline with args == done
+                        self.done = true;
                     }
+                    // Handle special case -- type + mut given, means `=` is next symbol, so we ignore it in that case only
+                } else if next.symbol == Symbol::EqualSign && self.arguments.is_empty() {
+                    return None;
                 }
                 // These symbols are not allowed on RHS of expression
                 else if BANNED_RHS_SYMBOLS.contains(&next.symbol) {
@@ -525,6 +691,38 @@ mod tests {
     use crate::lex::lex;
 
     #[test]
+    fn declare_import_1() {
+        let mut gi = GrammarImports::new();
+        let line: &str = "import a b from c";
+        let tokens = lex(line);
+        for t in tokens.into_iter().skip(1) {
+            gi.step(&t);
+        }
+        assert!(gi.done);
+        assert!(gi.is_valid);
+        assert_eq!(gi.file, "c".to_string());
+        assert!(gi.arguments.is_some());
+        if let Some(args) = gi.arguments.as_ref() {
+            assert_eq!(args[0].text, "a".to_string());
+            assert_eq!(args[1].text, "b".to_string());
+        }
+    }
+
+    #[test]
+    fn declare_import_2() {
+        let mut gi = GrammarImports::new();
+        let line: &str = "import this.c";
+        let tokens = lex(line);
+        for t in tokens.into_iter().skip(1) {
+            gi.step(&t);
+        }
+        assert!(gi.done);
+        assert!(gi.is_valid);
+        assert_eq!(gi.file, "this.c".to_string());
+        assert!(gi.arguments.is_none());
+    }
+
+    #[test]
     fn declare_fn_simple_1() {
         let mut gfd = GrammarFunctionDeclaration::new();
         let line: &str = "fn add :: a int -> b int -> int {\n";
@@ -539,13 +737,13 @@ mod tests {
         assert_eq!(gfd.arguments.len(), 2);
         // Arg 1
         assert_eq!(gfd.arguments[0].name, "a");
-        assert_eq!(gfd.arguments[0].data_type, DataType::Int);
+        assert_eq!(gfd.arguments[0].data_type, PrimitiveDataType::Int);
         assert!(gfd.arguments[0].value.is_none());
         // Arg 2
         assert_eq!(gfd.arguments[1].name, "b");
-        assert_eq!(gfd.arguments[1].data_type, DataType::Int);
+        assert_eq!(gfd.arguments[1].data_type, PrimitiveDataType::Int);
         assert!(gfd.arguments[1].value.is_none());
-        assert_eq!(gfd.return_type, DataType::Int);
+        assert_eq!(gfd.return_type, PrimitiveDataType::Int);
     }
 
     #[test]
@@ -563,13 +761,13 @@ mod tests {
         assert_eq!(gfd.arguments.len(), 2);
         // Arg 1
         assert_eq!(gfd.arguments[0].name, "old_filepath");
-        assert_eq!(gfd.arguments[0].data_type, DataType::Str);
+        assert_eq!(gfd.arguments[0].data_type, PrimitiveDataType::Str);
         assert!(gfd.arguments[0].value.is_none());
         // Arg 2
         assert_eq!(gfd.arguments[1].name, "new_filepath");
-        assert_eq!(gfd.arguments[1].data_type, DataType::Str);
+        assert_eq!(gfd.arguments[1].data_type, PrimitiveDataType::Str);
         assert!(gfd.arguments[1].value.is_none());
-        assert_eq!(gfd.return_type, DataType::Void);
+        assert_eq!(gfd.return_type, PrimitiveDataType::Void);
     }
 
     #[test]
@@ -589,5 +787,88 @@ mod tests {
             errors[0].as_ref().unwrap().message,
             "function name is missing"
         );
+    }
+
+    #[test]
+    fn declare_variable_init() {
+        let mut gv = GrammarVariableAssignments::new(AssignmentTypes::Initialize);
+        let line: &str = "let a :: int = 1";
+        let tokens = lex(line);
+        for t in tokens.into_iter().skip(1) {
+            gv.step(&t);
+        }
+        // assert!(gv.done); // this will fail b/c no newline, but this is okay
+        assert!(gv.is_valid);
+        assert_eq!(gv.data_type, PrimitiveDataType::Int);
+        assert_eq!(gv.mutable, false);
+        assert!(gv.type_provided);
+        assert_eq!(gv.name, "a".to_string());
+        assert_eq!(gv.arguments[0].text, "1".to_string());
+    }
+
+    #[test]
+    fn declare_variable_init_mut() {
+        let mut gv = GrammarVariableAssignments::new(AssignmentTypes::Initialize);
+        let line: &str = "let a :: str mut = \"meow\"";
+        let tokens = lex(line);
+        for t in tokens.into_iter().skip(1) {
+            gv.step(&t);
+        }
+        println!("{:#?}", gv);
+        // assert!(gv.done); // this will fail b/c no newline, but this is okay
+        assert!(gv.is_valid);
+        assert_eq!(gv.data_type, PrimitiveDataType::Str);
+        assert_eq!(gv.mutable, true);
+        assert!(gv.type_provided);
+        assert_eq!(gv.name, "a".to_string());
+        assert_eq!(gv.arguments[0].text, "\"meow\"".to_string());
+    }
+
+    #[test]
+    fn declare_variable_init_mut_no_type() {
+        let mut gv = GrammarVariableAssignments::new(AssignmentTypes::Initialize);
+        let line: &str = "let a :: mut = 42";
+        let tokens = lex(line);
+        for t in tokens.into_iter().skip(1) {
+            gv.step(&t);
+        }
+        println!("{:#?}", gv);
+        assert!(gv.is_valid);
+        assert_eq!(gv.data_type, PrimitiveDataType::Void); // Void is a filler type here
+        assert_eq!(gv.mutable, true);
+        assert_eq!(gv.type_provided, false);
+        assert_eq!(gv.name, "a".to_string());
+        assert_eq!(gv.arguments[0].text, "42".to_string());
+    }
+
+    #[test]
+    fn declare_variable_init_mut_auto() {
+        let mut gv = GrammarVariableAssignments::new(AssignmentTypes::Initialize);
+        let line: &str = "let a :: auto mut = 42";
+        let tokens = lex(line);
+        for t in tokens.into_iter().skip(1) {
+            gv.step(&t);
+        }
+        println!("{:#?}", gv);
+        assert!(gv.is_valid);
+        assert_eq!(gv.data_type, PrimitiveDataType::Void);
+        assert_eq!(gv.mutable, true);
+        assert_eq!(gv.type_provided, false);
+        assert_eq!(gv.name, "a".to_string());
+        assert_eq!(gv.arguments[0].text, "42".to_string());
+    }
+
+    #[test]
+    fn declare_variable_mutate() {
+        let mut gv = GrammarVariableAssignments::new(AssignmentTypes::Mutate);
+        let line: &str = "set a = 1";
+        let tokens = lex(line);
+        for t in tokens.into_iter().skip(1) {
+            print!("{:?}", t);
+            gv.step(&t);
+        }
+        assert!(gv.is_valid);
+        assert_eq!(gv.name, "a".to_string());
+        assert_eq!(gv.arguments[0].text, "1".to_string());
     }
 }
