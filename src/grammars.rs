@@ -464,7 +464,6 @@ pub enum AssignmentTypes {
 #[derive(Debug)]
 enum VariableAssignmentStages {
     FindingName,
-    CheckingForIndex,
     GettingIndexValue,
     DeclaringType,
     SeekingTypeName,
@@ -535,10 +534,6 @@ impl Grammar for GrammarVariableAssignments {
                     self.done = true;
                 }
             },
-            VariableAssignmentStages::CheckingForIndex => match next.symbol {
-                Symbol::At => self.stage = VariableAssignmentStages::GettingIndexValue,
-                _ => self.stage = VariableAssignmentStages::DeclaringType,
-            },
             VariableAssignmentStages::GettingIndexValue => match next.symbol {
                 Symbol::Value => {
                     self.index_text = Some(next.text.to_string());
@@ -554,6 +549,18 @@ impl Grammar for GrammarVariableAssignments {
             },
             VariableAssignmentStages::DeclaringType => match next.symbol {
                 // Double colon implies we're going to get a type
+                Symbol::At => match self.assignment_type {
+                    AssignmentTypes::Initialize => {
+                        error_message = Some(
+                                CompilerProblem::new(ProblemClass::Error, &format!("in declaration of `{}`, cannot index into a collection when initializing a value", self.name), "initialize the collection with `let...mut`, then use `set` to mutate the element at the given index", next.line, next.word)
+                            );
+                        self.is_valid = false;
+                        self.done = true;
+                    }
+                    AssignmentTypes::Mutate => {
+                        self.stage = VariableAssignmentStages::GettingIndexValue
+                    }
+                },
                 Symbol::DoubleColon => {
                     self.stage = VariableAssignmentStages::SeekingTypeName;
                 }
@@ -864,10 +871,25 @@ mod tests {
         let line: &str = "set a = 1";
         let tokens = lex(line);
         for t in tokens.into_iter().skip(1) {
-            print!("{:?}", t);
             gv.step(&t);
         }
         assert!(gv.is_valid);
+        assert_eq!(gv.name, "a".to_string());
+        assert_eq!(gv.arguments[0].text, "1".to_string());
+    }
+
+    #[test]
+    fn declare_variable_mutate_index() {
+        let mut gv = GrammarVariableAssignments::new(AssignmentTypes::Mutate);
+        let line: &str = "set a @ 10 = 1";
+        let tokens = lex(line);
+        for t in tokens.into_iter().skip(1) {
+            println!("{:?}, {:#?}", t, gv);
+            gv.step(&t);
+        }
+        assert!(gv.is_valid);
+        assert!(gv.index_text.is_some());
+        assert_eq!(gv.index_text.unwrap(), "10".to_string());
         assert_eq!(gv.name, "a".to_string());
         assert_eq!(gv.arguments[0].text, "1".to_string());
     }
