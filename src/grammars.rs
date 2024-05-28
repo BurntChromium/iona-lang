@@ -690,6 +690,91 @@ impl Grammar for GrammarVariableAssignments {
     }
 }
 
+// -------------------- Grammar: Return Statements --------------------
+
+#[derive(Debug)]
+enum ReturnStages {
+    Initialized,
+    ProcessingArguments,
+}
+
+/// The grammar for importing a file or functions/data
+#[derive(Debug)]
+pub struct GrammarReturns {
+    is_valid: bool,
+    done: bool,
+    stage: ReturnStages,
+    arguments: Vec<Token>,
+}
+
+impl GrammarReturns {
+    pub fn new() -> GrammarReturns {
+        GrammarReturns {
+            is_valid: true,
+            done: false,
+            stage: ReturnStages::Initialized,
+            arguments: Vec::<Token>::new(),
+        }
+    }
+}
+
+impl Grammar for GrammarReturns {
+    fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
+        if self.done {
+            return None;
+        }
+        let mut error_message = None;
+        match self.stage {
+            ReturnStages::Initialized => {
+                if next.symbol == Symbol::Newline {
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        "return statement is empty",
+                        "make sure your return statement is an expression",
+                        next.line,
+                        next.word,
+                    ));
+                } else if BANNED_RHS_SYMBOLS.contains(&next.symbol) {
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!(
+                            "a return statement contained a reserved symbol: {}",
+                            next.text
+                        ),
+                        "make sure your return statement is an expression",
+                        next.line,
+                        next.word,
+                    ));
+                } else {
+                    self.arguments.push(next.clone());
+                    self.stage = ReturnStages::ProcessingArguments;
+                }
+            }
+            ReturnStages::ProcessingArguments => {
+                if next.symbol == Symbol::Newline {
+                    self.done = true;
+                }
+                if BANNED_RHS_SYMBOLS.contains(&next.symbol) {
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!(
+                            "a return statement contained a reserved symbol: {}",
+                            next.text
+                        ),
+                        "make sure your return statement is an expression",
+                        next.line,
+                        next.word,
+                    ));
+                } else {
+                    self.arguments.push(next.clone());
+                    self.stage = ReturnStages::ProcessingArguments;
+                }
+            }
+        }
+        error_message
+    }
+}
+
 // -------------------- Unit Tests --------------------
 
 #[cfg(test)]

@@ -8,7 +8,7 @@ use std::fmt::Debug;
 
 use crate::compiler_errors::CompilerProblem;
 use crate::grammars::{
-    self, Grammar, GrammarFunctionDeclaration, GrammarImports, GrammarProperties,
+    self, Grammar, GrammarFunctionDeclaration, GrammarImports, GrammarProperties, GrammarReturns,
     GrammarVariableAssignments,
 };
 use crate::lex::{Symbol, Token};
@@ -33,6 +33,7 @@ pub enum NodeType {
     TypeDeclaration,
     EffectualFunctionInvocation,
     ImportStatement,
+    ReturnStatement,
 }
 
 /// Primitive data types (i.e. types not held in a container or struct)
@@ -107,6 +108,8 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, Vec<CompilerProblem>> {
             Symbol::ContractPre | Symbol::ContractPost | Symbol::ContractInvariant => {
                 Box::new(GrammarFunctionDeclaration::new())
             }
+            // Handle return statements
+            Symbol::Return => Box::new(GrammarReturns::new()),
             _ => Box::new(GrammarFunctionDeclaration::new()),
         };
         let mut errors: Vec<Option<CompilerProblem>> = Vec::new();
