@@ -9,7 +9,8 @@ use std::fmt::Debug;
 use crate::compiler_errors::{CompilerProblem, ProblemClass};
 use crate::lex::{Symbol, Token, BANNED_RHS_SYMBOLS};
 use crate::parse::{PrimitiveDataType, Variable};
-use crate::properties;
+use crate::permissions::Permissions;
+use crate::properties::{Properties, PROPERTY_LIST};
 
 pub trait Grammar: Debug {
     fn step(&mut self, next: &Token) -> Option<CompilerProblem>;
@@ -374,35 +375,43 @@ impl Grammar for GrammarFunctionDeclaration {
     }
 }
 
-// -------------------- Grammar: Properties --------------------
+// -------------------- Grammar: Function Annotations --------------------
 
 #[derive(Debug)]
-enum GPStages {
+enum GFAStages {
     Initialized,
     ExpectValues,
 }
 
-/// The Grammar for declaring a function's properties
 #[derive(Debug)]
-pub struct GrammarProperties {
-    is_valid: bool,
-    done: bool,
-    stage: GPStages,
-    p_list: Vec<properties::Properties>,
+pub enum FunctionAnnotations {
+    Prop(Properties),
+    Perm(Permissions),
 }
 
-impl GrammarProperties {
-    pub fn new() -> GrammarProperties {
-        GrammarProperties {
+/// The Grammar for declaring a function's properties
+#[derive(Debug)]
+pub struct GrammarFnAnnotation {
+    is_valid: bool,
+    done: bool,
+    annotation_type: FunctionAnnotations,
+    stage: GFAStages,
+    p_list: Vec<FunctionAnnotations>,
+}
+
+impl GrammarFnAnnotation {
+    pub fn new(annotation_type: FunctionAnnotations) -> GrammarFnAnnotation {
+        GrammarFnAnnotation {
             is_valid: true,
             done: false,
-            stage: GPStages::Initialized,
-            p_list: Vec::<properties::Properties>::new(),
+            annotation_type,
+            stage: GFAStages::Initialized,
+            p_list: Vec::<FunctionAnnotations>::new(),
         }
     }
 }
 
-impl Grammar for GrammarProperties {
+impl Grammar for GrammarFnAnnotation {
     /// Iterate through the line
     ///
     /// Stages:
@@ -415,9 +424,9 @@ impl Grammar for GrammarProperties {
         }
         let mut error_message: Option<CompilerProblem> = None;
         match self.stage {
-            GPStages::Initialized => match next.symbol {
+            GFAStages::Initialized => match next.symbol {
                 Symbol::DoubleColon => {
-                    self.stage = GPStages::ExpectValues;
+                    self.stage = GFAStages::ExpectValues;
                 }
                 _ => {
                     self.is_valid = false;
@@ -434,30 +443,51 @@ impl Grammar for GrammarProperties {
                     ));
                 }
             },
-            GPStages::ExpectValues => match next.symbol {
-                Symbol::Value => match next.text.as_str() {
-                    "Pure" => self.p_list.push(properties::Properties::Pure),
-                    "Export" => self.p_list.push(properties::Properties::Export),
-                    _ => {
-                        self.is_valid = false;
-                        self.done = true;
+            GFAStages::ExpectValues => match next.symbol {
+                Symbol::Value => match self.annotation_type {
+                    // Match on permissions
+                    FunctionAnnotations::Perm(_) => self
+                        .p_list
+                        .push(FunctionAnnotations::Perm(Permissions::from_str(&next.text))),
+                    // Match on properties
+                    FunctionAnnotations::Prop(_) => match next.text.as_str() {
+                        "Pure" => self
+                            .p_list
+                            .push(FunctionAnnotations::Prop(Properties::Pure)),
+                        "Public" => self
+                            .p_list
+                            .push(FunctionAnnotations::Prop(Properties::Public)),
+                        "Export" => self
+                            .p_list
+                            .push(FunctionAnnotations::Prop(Properties::Export)),
+                        _ => {
+                            self.is_valid = false;
+                            self.done = true;
+                            error_message = Some(CompilerProblem::new(
+                                ProblemClass::Error,
+                                &format!("unrecognized property {}.", next.text),
+                                &format!("valid properties are:\n{:?}", PROPERTY_LIST),
+                                next.line,
+                                next.word,
+                            ));
+                        }
+                    },
+                },
+                Symbol::Newline => {
+                    if self.p_list.is_empty() {
+                        let list_type_str = match self.annotation_type {
+                            FunctionAnnotations::Perm(_) => "permission",
+                            FunctionAnnotations::Prop(_) => "property",
+                        };
                         error_message = Some(CompilerProblem::new(
-                            ProblemClass::Error,
-                            &format!("unrecognized property {}.", next.text),
-                            &format!("valid properties are:\n{:?}", properties::PROPERTY_LIST),
+                            ProblemClass::Warning,
+                            &format!("empty {list_type_str} list"),
+                            &format!("either remove the {list_type_str} list or add items"),
                             next.line,
                             next.word,
                         ));
+                        self.is_valid = false;
                     }
-                },
-                Symbol::Newline => {
-                    error_message = Some(CompilerProblem::new(
-                        ProblemClass::Warning,
-                        "empty property list",
-                        "either remove the property list or add valid properties",
-                        next.line,
-                        next.word,
-                    ));
                     self.done = true;
                 }
                 _ => {

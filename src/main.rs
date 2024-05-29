@@ -9,6 +9,7 @@ mod compiler_errors;
 mod grammars;
 mod lex;
 mod parse;
+mod permissions;
 mod properties;
 
 use crate::compiler_errors::{display_problem, ProblemClass};

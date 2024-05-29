@@ -8,10 +8,11 @@ use std::fmt::Debug;
 
 use crate::compiler_errors::CompilerProblem;
 use crate::grammars::{
-    self, Grammar, GrammarEmpty, GrammarFunctionDeclaration, GrammarImports, GrammarProperties,
-    GrammarReturns, GrammarVariableAssignments,
+    self, FunctionAnnotations, Grammar, GrammarEmpty, GrammarFnAnnotation,
+    GrammarFunctionDeclaration, GrammarImports, GrammarReturns, GrammarVariableAssignments,
 };
 use crate::lex::{Symbol, Token};
+use crate::properties::Properties;
 
 /// Nodes are objects corresponding to an IR, and each node has exactly one type (each line of code has one effect, or "role" to play).
 ///
@@ -28,6 +29,7 @@ use crate::lex::{Symbol, Token};
 pub enum NodeType {
     FunctionDeclaration,
     PropertyDeclaration,
+    PermissionsDeclaration,
     ContractDeclaration,
     VariableAssignment,
     TypeDeclaration,
@@ -108,10 +110,19 @@ pub fn parse(tokens: Vec<Token>) -> (Vec<Node>, Vec<CompilerProblem>) {
                 node_type = NodeType::FunctionDeclaration;
                 Box::new(GrammarFunctionDeclaration::new())
             }
-            // Handle property declarations
+            // Handle property declarations (pass in dummy value to signal type)
             Symbol::PropertyDeclaration => {
                 node_type = NodeType::PropertyDeclaration;
-                Box::new(GrammarProperties::new())
+                Box::new(GrammarFnAnnotation::new(FunctionAnnotations::Prop(
+                    Properties::Pure,
+                )))
+            }
+            // Handle permissions declarations (pass in dummy value to signal type)
+            Symbol::PermissionsDeclaration => {
+                node_type = NodeType::PermissionsDeclaration;
+                Box::new(GrammarFnAnnotation::new(FunctionAnnotations::Perm(
+                    crate::permissions::Permissions::Custom,
+                )))
             }
             // Handle variable declarations
             Symbol::Set | Symbol::Let => {
