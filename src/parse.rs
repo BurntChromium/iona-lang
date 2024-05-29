@@ -5,8 +5,9 @@
 //! We represent our AST as a flat list of `Nodes`, and each `Node` is assigned a Grammar and some metadata.
 
 use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
 
-use crate::compiler_errors::CompilerProblem;
+use crate::compiler_errors::{CompilerProblem, ProblemClass};
 use crate::grammars::{
     self, Grammar, GrammarFunctionDeclaration, GrammarImports, GrammarProperties, GrammarReturns,
     GrammarVariableAssignments,
@@ -46,17 +47,52 @@ pub enum PrimitiveDataType {
     Bool,
 }
 
-pub trait Data: Debug {}
+pub trait Data: Debug + Send + Sync {}
+
+/// Allows choosing between a single-threaded or multi-threaded implementation wrapper around a Grammar trait object
+#[derive(Debug)]
+pub enum GrammarContainer {
+    SingleThreaded(Box<dyn Grammar>),
+    MultiThreaded(Arc<Mutex<dyn Grammar>>),
+}
+
+impl GrammarContainer {
+    /// Wraps a Grammar trait object in the appropriate enum
+    pub fn wrap<G: Grammar + 'static>(grammar: G, multi_threaded: bool) -> Self {
+        if multi_threaded {
+            GrammarContainer::MultiThreaded(Arc::new(Mutex::new(grammar)))
+        } else {
+            GrammarContainer::SingleThreaded(Box::new(grammar))
+        }
+    }
+
+    /// Wrapper method for calling `step` on the interior Grammar object
+    pub fn step(&mut self, token: &Token) -> Option<CompilerProblem> {
+        match self {
+            Self::SingleThreaded(g) => g.as_mut().step(token),
+            Self::MultiThreaded(g_mutex) => match g_mutex.lock() {
+                Ok(mut g) => g.step(token),
+                Err(_) => Some(CompilerProblem::new(
+                    ProblemClass::Error,
+                    "internal compiler error - failed to acquire Mutex lock from GrammarContainer",
+                    "please file a bug report",
+                    0,
+                    0,
+                )),
+            },
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Node {
     pub node_type: NodeType,
-    pub grammar: Box<dyn Grammar>,
+    pub grammar: GrammarContainer,
     pub source_line: usize,
 }
 
 impl Node {
-    pub fn new(node_type: NodeType, grammar: Box<dyn Grammar>, source_line: usize) -> Node {
+    pub fn new(node_type: NodeType, grammar: GrammarContainer, source_line: usize) -> Node {
         Node {
             node_type,
             grammar,
@@ -69,7 +105,7 @@ impl Node {
 pub struct Variable {
     pub name: String,
     pub data_type: PrimitiveDataType,
-    pub value: Option<Box<dyn Data>>,
+    pub value: Option<Arc<Mutex<dyn Data>>>,
 }
 
 /// Parse a list of tokens
@@ -94,28 +130,33 @@ pub fn parse(tokens: Vec<Token>, fused_mode: bool) -> (Vec<Node>, Vec<CompilerPr
     while let Some(token) = iterator.next() {
         // On a match, grab all tokens in the same line
         // Map the appropriate grammar to that line of tokens, and accumulate any errors
-        let mut grammar: Box<dyn Grammar> = match token.symbol {
+        let mut grammar: GrammarContainer = match token.symbol {
             // Handle imports
-            Symbol::Import => Box::new(GrammarImports::new()),
+            Symbol::Import => GrammarContainer::wrap(GrammarImports::new(), fused_mode),
             // Handle function declaration
-            Symbol::FunctionDeclare => Box::new(GrammarFunctionDeclaration::new()),
+            Symbol::FunctionDeclare => {
+                GrammarContainer::wrap(GrammarFunctionDeclaration::new(), fused_mode)
+            }
             // Handle property declarations
-            Symbol::PropertyDeclaration => Box::new(GrammarProperties::new()),
+            Symbol::PropertyDeclaration => {
+                GrammarContainer::wrap(GrammarProperties::new(), fused_mode)
+            }
             // Handle variable declarations
-            Symbol::Set | Symbol::Let => Box::new(GrammarVariableAssignments::new(
-                if token.symbol == Symbol::Let {
+            Symbol::Set | Symbol::Let => GrammarContainer::wrap(
+                GrammarVariableAssignments::new(if token.symbol == Symbol::Let {
                     grammars::AssignmentTypes::Initialize
                 } else {
                     grammars::AssignmentTypes::Mutate
-                },
-            )),
+                }),
+                fused_mode,
+            ),
             // Handle contracts
             Symbol::ContractPre | Symbol::ContractPost | Symbol::ContractInvariant => {
-                Box::new(GrammarFunctionDeclaration::new())
+                GrammarContainer::wrap(GrammarImports::new(), fused_mode)
             }
             // Handle return statements
-            Symbol::Return => Box::new(GrammarReturns::new()),
-            _ => Box::new(GrammarFunctionDeclaration::new()),
+            Symbol::Return => GrammarContainer::wrap(GrammarReturns::new(), fused_mode),
+            _ => GrammarContainer::wrap(GrammarImports::new(), fused_mode),
         };
         let mut errors: Vec<Option<CompilerProblem>> = Vec::new();
         let future = iterator.clone().peekable();

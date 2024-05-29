@@ -8,6 +8,7 @@ use std::time::Instant;
 mod compiler_errors;
 mod grammars;
 mod lex;
+mod parallel_preprocess;
 mod parse;
 mod properties;
 

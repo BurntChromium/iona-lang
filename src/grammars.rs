@@ -11,7 +11,7 @@ use crate::lex::{Symbol, Token, BANNED_RHS_SYMBOLS};
 use crate::parse::{PrimitiveDataType, Variable};
 use crate::properties;
 
-pub trait Grammar: Debug {
+pub trait Grammar: Debug + Send + Sync {
     fn step(&mut self, next: &Token) -> Option<CompilerProblem>;
 }
 

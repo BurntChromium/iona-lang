@@ -136,61 +136,66 @@ impl Token {
     }
 }
 
+/// Lex a single line of text
+pub fn lex_line(line: &str, line_index: usize, tokens_buffer: &mut Vec<Token>) {
+    // Split on some standard whitespace
+    let words = line.split(&[' ', '\t', '\r']);
+    // Using `for (word_index, word) in words.enumerate()` gives the wrong indices
+    let mut word_index: usize = 0;
+    for word in words {
+        // Handle exceptions to the "partition by space" rule
+        if word.is_empty() {
+            // Skip empty lines
+            continue;
+        } else if (word.starts_with('(') || word.ends_with(')')) && word.len() > 1 {
+            // Handle parenthesis
+            let mut offset_start = 0usize;
+            let mut offset_end = word.len();
+            let mut deferred_closing_parens = 0usize;
+            // ASSUME that '(' always appears at beginning, ')' appears at end
+            for char in word.chars() {
+                if char == '(' {
+                    offset_start += 1;
+                    tokens_buffer.push(Token::new("(", line_index, word_index));
+                    word_index += 1;
+                }
+                if char == ')' {
+                    offset_end -= 1;
+                    deferred_closing_parens += 1;
+                }
+            }
+            // Push that word stripped of parens
+            tokens_buffer.push(Token::new(
+                &word[offset_start..offset_end],
+                line_index,
+                word_index,
+            ));
+            // Push any trailing '('s
+            word_index += 1;
+            for _ in 0..deferred_closing_parens {
+                tokens_buffer.push(Token::new(")", line_index, word_index));
+                word_index += 1;
+            }
+        } else {
+            // Default case
+            tokens_buffer.push(Token::new(word, line_index, word_index));
+            word_index += 1;
+        }
+    }
+    // Add new line separator token
+    if let Some(t) = tokens_buffer.last() {
+        tokens_buffer.push(Token::new("\n", line_index, t.word + 1));
+    } else {
+        tokens_buffer.push(Token::new("\n", line_index, 0));
+    }
+}
+
 /// Process a code string and return a vector of tokens
 pub fn lex(input: &str) -> Vec<Token> {
     let mut tokens: Vec<Token> = Vec::new();
     // Analyze line by line (delegates issue of deciding what constitutes a new line)
     for (line_index, line) in input.lines().enumerate() {
-        // Split on some standard whitespace
-        let words = line.split(&[' ', '\t', '\r']);
-        // Using `for (word_index, word) in words.enumerate()` gives the wrong indices
-        let mut word_index: usize = 0;
-        for word in words {
-            // Handle exceptions to the "partition by space" rule
-            if word.is_empty() {
-                // Skip empty lines
-                continue;
-            } else if (word.starts_with('(') || word.ends_with(')')) && word.len() > 1 {
-                // Handle parenthesis
-                let mut offset_start = 0usize;
-                let mut offset_end = word.len();
-                let mut deferred_closing_parens = 0usize;
-                // ASSUME that '(' always appears at beginning, ')' appears at end
-                for char in word.chars() {
-                    if char == '(' {
-                        offset_start += 1;
-                        tokens.push(Token::new("(", line_index, word_index));
-                        word_index += 1;
-                    }
-                    if char == ')' {
-                        offset_end -= 1;
-                        deferred_closing_parens += 1;
-                    }
-                }
-                // Push that word stripped of parens
-                tokens.push(Token::new(
-                    &word[offset_start..offset_end],
-                    line_index,
-                    word_index,
-                ));
-                // Push any trailing '('s
-                word_index += 1;
-                for _ in 0..deferred_closing_parens {
-                    tokens.push(Token::new(")", line_index, word_index));
-                    word_index += 1;
-                }
-            } else {
-                // Default case
-                tokens.push(Token::new(word, line_index, word_index));
-                word_index += 1;
-            }
-        }
-        // Add new line separator token
-        if let Some(t) = tokens.last() {
-            tokens.push(Token::new("\n", line_index, t.word + 1));
-        } else {
-            tokens.push(Token::new("\n", line_index, 0));
-        }
+        lex_line(line, line_index, &mut tokens);
     }
     // Pop the trailing newline we inserted
     _ = tokens.pop();
