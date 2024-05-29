@@ -143,6 +143,14 @@ pub fn lex(input: &str) -> Vec<Token> {
     for (line_index, line) in input.lines().enumerate() {
         // Split on some standard whitespace
         let words = line.split(&[' ', '\t', '\r']);
+        // Handle special cases w.r.t. line breaks
+        let mut words_p = words.clone().peekable();
+        // Skip commented out lines
+        if *words_p.peek().unwrap_or(&"\n") == "//" {
+            tokens.push(Token::new("//", line_index, 0));
+            tokens.push(Token::new("\n", line_index, 0));
+            continue;
+        }
         // Using `for (word_index, word) in words.enumerate()` gives the wrong indices
         let mut word_index: usize = 0;
         for word in words {
@@ -270,11 +278,6 @@ mod tests {
         }";
         let expected: Vec<Symbol> = vec![
             Symbol::Comment,
-            Symbol::Value,
-            Symbol::Value,
-            Symbol::Value,
-            Symbol::Value,
-            Symbol::Value,
             Symbol::Newline,
             Symbol::FunctionDeclare,
             Symbol::Value,
@@ -303,9 +306,9 @@ mod tests {
         let tokens = lex(program);
         let actual = tokens.iter().map(|t| t.symbol).collect::<Vec<Symbol>>();
         assert_eq!(actual, expected);
-        assert_eq!(tokens[7].line, 1);
-        assert_eq!(tokens[7].word, 0);
-        assert_eq!(tokens[8].line, 1);
-        assert_eq!(tokens[8].word, 1);
+        assert_eq!(tokens[2].line, 1);
+        assert_eq!(tokens[2].word, 0);
+        assert_eq!(tokens[3].line, 1);
+        assert_eq!(tokens[3].word, 1);
     }
 }

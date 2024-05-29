@@ -41,13 +41,10 @@ fn copy_to :: old_filepath str -> new_filepath str -> void {
 fn fibonacci :: nth int -> int {
     #Properties Pure Export
     #In :: n >= 0 -> "n must be at least 0"
-    if n == 0 {
-        return 1
-    } else if n == 1 {
-        return 1
-    } else if n == 2 {
-        return 2
-    } else {
-        return fibonacci (n - 1) + fibonacci (n - 2)
+    match n {
+        0 => return 1
+        1 => return 1
+        2 => return 2
+        _ => fibonacci (n - 1) + fibonacci (n - 2)
     }
 }
