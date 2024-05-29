@@ -15,6 +15,30 @@ pub trait Grammar: Debug {
     fn step(&mut self, next: &Token) -> Option<CompilerProblem>;
 }
 
+// -------------------- Grammar: Empty / Void / Skip --------------------
+
+/// This grammar is for stuff like comments that we don't care about
+#[derive(Debug)]
+pub struct GrammarEmpty {
+    is_valid: bool,
+    done: bool,
+}
+
+impl GrammarEmpty {
+    pub fn new() -> GrammarEmpty {
+        GrammarEmpty {
+            is_valid: true,
+            done: false,
+        }
+    }
+}
+
+impl Grammar for GrammarEmpty {
+    fn step(&mut self, _: &Token) -> Option<CompilerProblem> {
+        None
+    }
+}
+
 // -------------------- Grammar: Imports --------------------
 
 #[derive(Debug)]

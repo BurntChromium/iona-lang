@@ -8,8 +8,8 @@ use std::fmt::Debug;
 
 use crate::compiler_errors::CompilerProblem;
 use crate::grammars::{
-    self, Grammar, GrammarFunctionDeclaration, GrammarImports, GrammarProperties, GrammarReturns,
-    GrammarVariableAssignments,
+    self, Grammar, GrammarEmpty, GrammarFunctionDeclaration, GrammarImports, GrammarProperties,
+    GrammarReturns, GrammarVariableAssignments,
 };
 use crate::lex::{Symbol, Token};
 
@@ -34,6 +34,8 @@ pub enum NodeType {
     EffectualFunctionInvocation,
     ImportStatement,
     ReturnStatement,
+    CloseScope,
+    Empty,
 }
 
 /// Primitive data types (i.e. types not held in a container or struct)
@@ -85,37 +87,63 @@ pub struct Variable {
 /// - For each token in the line, feed it through the grammar
 /// - Along the way, accumulate any errors we find
 /// - When all lines have been mapped, return all nodes and all errors and let the caller decide what to do with it (otherwise, we would swallow warnings and lints)
-pub fn parse(tokens: Vec<Token>, fused_mode: bool) -> (Vec<Node>, Vec<CompilerProblem>) {
+pub fn parse(tokens: Vec<Token>) -> (Vec<Node>, Vec<CompilerProblem>) {
     let mut nodes = Vec::<Node>::new();
     let mut error_list: Vec<CompilerProblem> = Vec::<CompilerProblem>::new();
     // We will be skipping the iterator from inside the loop, so we do something a little weird looking
     let mut iterator = tokens.iter();
     // At the beginning of each line, apply a grammar to that line
     while let Some(token) = iterator.next() {
+        let node_type: NodeType;
         // On a match, grab all tokens in the same line
         // Map the appropriate grammar to that line of tokens, and accumulate any errors
         let mut grammar: Box<dyn Grammar> = match token.symbol {
             // Handle imports
-            Symbol::Import => Box::new(GrammarImports::new()),
+            Symbol::Import => {
+                node_type = NodeType::ImportStatement;
+                Box::new(GrammarImports::new())
+            }
             // Handle function declaration
-            Symbol::FunctionDeclare => Box::new(GrammarFunctionDeclaration::new()),
+            Symbol::FunctionDeclare => {
+                node_type = NodeType::FunctionDeclaration;
+                Box::new(GrammarFunctionDeclaration::new())
+            }
             // Handle property declarations
-            Symbol::PropertyDeclaration => Box::new(GrammarProperties::new()),
+            Symbol::PropertyDeclaration => {
+                node_type = NodeType::PropertyDeclaration;
+                Box::new(GrammarProperties::new())
+            }
             // Handle variable declarations
-            Symbol::Set | Symbol::Let => Box::new(GrammarVariableAssignments::new(
-                if token.symbol == Symbol::Let {
-                    grammars::AssignmentTypes::Initialize
-                } else {
-                    grammars::AssignmentTypes::Mutate
-                },
-            )),
+            Symbol::Set | Symbol::Let => {
+                node_type = NodeType::VariableAssignment;
+                Box::new(GrammarVariableAssignments::new(
+                    if token.symbol == Symbol::Let {
+                        grammars::AssignmentTypes::Initialize
+                    } else {
+                        grammars::AssignmentTypes::Mutate
+                    },
+                ))
+            }
             // Handle contracts
             Symbol::ContractPre | Symbol::ContractPost | Symbol::ContractInvariant => {
+                node_type = NodeType::ContractDeclaration;
                 Box::new(GrammarFunctionDeclaration::new())
             }
             // Handle return statements
-            Symbol::Return => Box::new(GrammarReturns::new()),
-            _ => Box::new(GrammarFunctionDeclaration::new()),
+            Symbol::Return => {
+                node_type = NodeType::ReturnStatement;
+                Box::new(GrammarReturns::new())
+            }
+            // Handle scope closes
+            Symbol::BraceClose => {
+                node_type = NodeType::CloseScope;
+                Box::new(GrammarEmpty::new())
+            }
+            // Skip comments
+            _ => {
+                node_type = NodeType::Empty;
+                Box::new(GrammarEmpty::new())
+            }
         };
         let mut errors: Vec<Option<CompilerProblem>> = Vec::new();
         let future = iterator.clone().peekable();
@@ -127,9 +155,7 @@ pub fn parse(tokens: Vec<Token>, fused_mode: bool) -> (Vec<Node>, Vec<CompilerPr
             }
         }
         // Then force the iterator to catch up (if NOT in fused mode => fused mode implies single line of source code)
-        if !fused_mode {
-            iterator.nth(errors.len());
-        }
+        iterator.nth(errors.len());
         // Check for errors (this happens after skip because consumes iterator)
         let mut okay = true;
         for e in errors {
@@ -139,11 +165,7 @@ pub fn parse(tokens: Vec<Token>, fused_mode: bool) -> (Vec<Node>, Vec<CompilerPr
             }
         }
         if okay {
-            nodes.push(Node::new(
-                NodeType::FunctionDeclaration,
-                grammar,
-                token.line,
-            ));
+            nodes.push(Node::new(node_type, grammar, token.line));
         }
     }
     // Return or provide a list of errors

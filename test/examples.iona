@@ -38,7 +38,7 @@ fn copy_to :: old_filepath str -> new_filepath str -> void {
     write_file data new_filepath
 }
 
-fn fibonacci :: nth int -> int {
+fn fibonacci :: n int -> int {
     #Properties Pure Export
     #In :: n >= 0 -> "n must be at least 0"
     match n {

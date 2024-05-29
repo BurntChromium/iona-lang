@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Lex the file
     let tokens = lex::lex(&program_root);
     // Parse the file
-    let (_, errors) = parse::parse(tokens, false);
+    let (_, errors) = parse::parse(tokens);
     let mut okay: bool = true;
     let elapsed = now.elapsed();
     println!("Finished compiling in {:.2?}", elapsed);
