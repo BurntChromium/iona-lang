@@ -27,17 +27,17 @@ use crate::properties::Properties;
 /// - EffectualFunctionInvocation: some fn call without let/set/return (i.e. it exists only for whatever side effect is triggered by calling it)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeType {
-    FunctionDeclaration,
-    PropertyDeclaration,
-    PermissionsDeclaration,
-    ContractDeclaration,
-    VariableAssignment,
-    TypeDeclaration,
-    EffectualFunctionInvocation,
-    ImportStatement,
-    ReturnStatement,
-    CloseScope,
-    Empty,
+    FunctionDeclaration,         // done
+    PropertyDeclaration,         // done
+    PermissionsDeclaration,      // done
+    ContractDeclaration,         // TODO
+    VariableAssignment,          // done
+    TypeDeclaration,             // newtype, TODO
+    EffectualFunctionInvocation, // TODO
+    ImportStatement,             // done
+    ReturnStatement,             // done
+    CloseScope,                  // done
+    Empty,                       // done
 }
 
 /// Primitive data types (i.e. types not held in a container or struct)
