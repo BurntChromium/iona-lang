@@ -7,53 +7,60 @@
 use std::fmt::Debug;
 
 use crate::compiler_errors::{CompilerProblem, ProblemClass};
-use crate::lex::{Symbol, Token, BANNED_RHS_SYMBOLS};
+use crate::lex::{Symbol, Token};
 use crate::parse::{PrimitiveDataType, Variable};
 use crate::permissions::Permissions;
 use crate::properties::{Properties, PROPERTY_LIST};
 
-pub enum ArgumentVector {
-    Annotation(Vec<FunctionAnnotations>),
-    Variables(Vec<Variable>),
-    Tokens(Vec<Token>),
-}
-
-pub trait Grammar: Debug {
-    fn step(&mut self, next: &Token) -> Option<CompilerProblem>;
-    fn get_arguments(&self) -> Option<ArgumentVector>;
-}
-
-// -------------------- Grammar: Empty / Void / Skip --------------------
-
-/// This grammar is for stuff like comments that we don't care about
 #[derive(Debug)]
-pub struct GrammarEmpty {
-    is_valid: bool,
-    done: bool,
+pub enum Grammar {
+    Empty,
+    Import(GrammarImports),
+    Function(GrammarFunctionDeclaration),
+    Property(GrammarProperty),
+    Permission(GrammarPermissions),
+    VariableAssignment(GrammarVariableAssignments),
+    Return,
+    Expression, // TODO
+    Enum,       // TODO
+    Struct,     // TODO
 }
 
-impl GrammarEmpty {
-    pub fn new() -> GrammarEmpty {
-        GrammarEmpty {
-            is_valid: true,
-            done: false,
+impl Grammar {
+    pub fn new(symbol: Symbol) -> Grammar {
+        match symbol {
+            Symbol::Import => Grammar::Import(GrammarImports::new()),
+            Symbol::FunctionDeclare => Grammar::Function(GrammarFunctionDeclaration::new()),
+            Symbol::PropertyDeclaration => Grammar::Property(GrammarProperty::new()),
+            Symbol::PermissionsDeclaration => Grammar::Permission(GrammarPermissions::new()),
+            Symbol::Let | Symbol::Set => {
+                Grammar::VariableAssignment(GrammarVariableAssignments::new(symbol))
+            }
+            Symbol::Return => Grammar::Return,
+            _ => Grammar::Empty,
         }
     }
-}
 
-impl Grammar for GrammarEmpty {
-    fn step(&mut self, _: &Token) -> Option<CompilerProblem> {
-        None
-    }
-    fn get_arguments(&self) -> Option<ArgumentVector> {
-        None
+    pub fn step(&mut self, token: &Token) -> Option<CompilerProblem> {
+        match self {
+            Grammar::Empty => None,
+            Grammar::Import(g) => g.step(token),
+            Grammar::Function(g) => g.step(token),
+            Grammar::Property(g) => g.step(token),
+            Grammar::Permission(g) => g.step(token),
+            Grammar::VariableAssignment(g) => g.step(token),
+            Grammar::Return => None,
+            Grammar::Expression => None,
+            Grammar::Enum => None,
+            Grammar::Struct => None,
+        }
     }
 }
 
 // -------------------- Grammar: Imports --------------------
 
 #[derive(Debug)]
-enum GIStages {
+enum StagesImport {
     Initialized,
     ProcessingArguments,
     ProcessingFile,
@@ -64,38 +71,36 @@ enum GIStages {
 pub struct GrammarImports {
     is_valid: bool,
     done: bool,
-    stage: GIStages,
+    stage: StagesImport,
     arguments: Option<Vec<Token>>,
     file: String,
 }
 
 impl GrammarImports {
-    pub fn new() -> GrammarImports {
+    fn new() -> GrammarImports {
         GrammarImports {
             is_valid: true,
             done: false,
-            stage: GIStages::Initialized,
+            stage: StagesImport::Initialized,
             arguments: None,
             file: "unknown".to_string(),
         }
     }
-}
 
-impl Grammar for GrammarImports {
     fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
         if self.done {
             return None;
         }
         let mut error_message = None;
         match self.stage {
-            GIStages::Initialized => {
+            StagesImport::Initialized => {
                 // If there's a dot we're importing a file and can wrap up immediately
                 if next.text.contains(".") {
                     self.file = next.text.to_string();
                     self.done = true;
                 } else {
                     // We must be importing arguments so grab the first one
-                    self.stage = GIStages::ProcessingArguments;
+                    self.stage = StagesImport::ProcessingArguments;
                     if next.symbol == Symbol::Value {
                         self.arguments = Some(vec![next.clone()]);
                     } else {
@@ -109,8 +114,8 @@ impl Grammar for GrammarImports {
                     }
                 }
             }
-            GIStages::ProcessingArguments => match next.symbol {
-                Symbol::From => self.stage = GIStages::ProcessingFile,
+            StagesImport::ProcessingArguments => match next.symbol {
+                Symbol::From => self.stage = StagesImport::ProcessingFile,
                 Symbol::Value => {
                     if let Some(args) = &mut self.arguments {
                         args.push(next.clone());
@@ -130,7 +135,7 @@ impl Grammar for GrammarImports {
                 }
             },
             // Only entered if we had arguments
-            GIStages::ProcessingFile => match next.symbol {
+            StagesImport::ProcessingFile => match next.symbol {
                 Symbol::Value => {
                     self.file = next.text.to_string();
                     self.done = true;
@@ -151,16 +156,12 @@ impl Grammar for GrammarImports {
         }
         error_message
     }
-
-    fn get_arguments(&self) -> Option<ArgumentVector> {
-        Some(ArgumentVector::Tokens(self.arguments.clone()?))
-    }
 }
 
 // -------------------- Grammar: Functions --------------------
 
 #[derive(Debug)]
-enum GFDStages {
+enum StagesFunction {
     Initialized,
     NameProcessed,
     SeekingArguments,
@@ -179,10 +180,10 @@ enum GFDStages {
 pub struct GrammarFunctionDeclaration {
     is_valid: bool,
     done: bool,
-    stage: GFDStages,
+    stage: StagesFunction,
     last_symbol: Symbol,
     fn_name: String,
-    arguments: Vec<Variable>,
+    pub arguments: Vec<Variable>,
     return_type: PrimitiveDataType,
 }
 
@@ -191,16 +192,14 @@ impl GrammarFunctionDeclaration {
         GrammarFunctionDeclaration {
             is_valid: true,
             done: false,
-            stage: GFDStages::Initialized,
+            stage: StagesFunction::Initialized,
             last_symbol: Symbol::FunctionDeclare,
             fn_name: "undefined".to_string(),
             arguments: Vec::<Variable>::new(),
             return_type: PrimitiveDataType::Void,
         }
     }
-}
 
-impl Grammar for GrammarFunctionDeclaration {
     /// Steps forward through a state machine, returning optional error message
     fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
         if self.done {
@@ -209,11 +208,11 @@ impl Grammar for GrammarFunctionDeclaration {
         let mut error_message: Option<CompilerProblem> = None;
         match self.stage {
             // Initial stage -> next symbol should be the fn name
-            GFDStages::Initialized => match next.symbol {
+            StagesFunction::Initialized => match next.symbol {
                 Symbol::Value => {
                     if next.text.is_ascii() {
                         self.fn_name = next.text.to_string();
-                        self.stage = GFDStages::NameProcessed;
+                        self.stage = StagesFunction::NameProcessed;
                     } else {
                         error_message = Some(CompilerProblem::new(
                             ProblemClass::Error,
@@ -237,12 +236,12 @@ impl Grammar for GrammarFunctionDeclaration {
                 }
             },
             // Function has been named. Now need either a left brace (no args) or a :: (args)
-            GFDStages::NameProcessed => match next.symbol {
+            StagesFunction::NameProcessed => match next.symbol {
                 Symbol::BraceOpen => {
                     self.done = true;
                 }
                 Symbol::DoubleColon => {
-                    self.stage = GFDStages::SeekingArguments;
+                    self.stage = StagesFunction::SeekingArguments;
                 }
                 _ => {
                     self.is_valid = false;
@@ -251,25 +250,25 @@ impl Grammar for GrammarFunctionDeclaration {
                 }
             },
             // Function has one or more arguments.
-            GFDStages::SeekingArguments => {
+            StagesFunction::SeekingArguments => {
                 if self.last_symbol == Symbol::DoubleColon || self.last_symbol == Symbol::RightArrow
                 {
                     match next.symbol {
                         // If we receive a type after :: or ->, it implies that is the return type and there are no arguments
                         Symbol::TypeBool => {
-                            self.stage = GFDStages::SeekingBracket;
+                            self.stage = StagesFunction::SeekingBracket;
                             self.return_type = PrimitiveDataType::Bool;
                         }
                         Symbol::TypeInt => {
-                            self.stage = GFDStages::SeekingBracket;
+                            self.stage = StagesFunction::SeekingBracket;
                             self.return_type = PrimitiveDataType::Int;
                         }
                         Symbol::TypeStr => {
-                            self.stage = GFDStages::SeekingBracket;
+                            self.stage = StagesFunction::SeekingBracket;
                             self.return_type = PrimitiveDataType::Str;
                         }
                         Symbol::TypeVoid => {
-                            self.stage = GFDStages::SeekingBracket;
+                            self.stage = StagesFunction::SeekingBracket;
                             self.return_type = PrimitiveDataType::Void;
                         }
                         // A value here implies the argument name
@@ -366,7 +365,7 @@ impl Grammar for GrammarFunctionDeclaration {
                     }
                 }
             }
-            GFDStages::SeekingBracket => match next.symbol {
+            StagesFunction::SeekingBracket => match next.symbol {
                 Symbol::BraceOpen => {
                     self.done = true;
                 }
@@ -387,64 +386,53 @@ impl Grammar for GrammarFunctionDeclaration {
         self.last_symbol = next.symbol;
         error_message
     }
-
-    fn get_arguments(&self) -> Option<ArgumentVector> {
-        Some(ArgumentVector::Variables(self.arguments.clone()))
-    }
 }
 
 // -------------------- Grammar: Function Annotations --------------------
 
 #[derive(Debug)]
-enum GFAStages {
+enum StagesAnnotation {
     Initialized,
     ExpectValues,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum FunctionAnnotations {
-    Prop(Properties),
-    Perm(Permissions),
-}
-
 /// The Grammar for declaring a function's properties
 #[derive(Debug)]
-pub struct GrammarFnAnnotation {
+pub struct GrammarProperty {
     is_valid: bool,
     done: bool,
-    annotation_type: FunctionAnnotations,
-    stage: GFAStages,
-    p_list: Vec<FunctionAnnotations>,
+    stage: StagesAnnotation,
+    p_list: Vec<Properties>,
 }
 
-impl GrammarFnAnnotation {
-    pub fn new(annotation_type: FunctionAnnotations) -> GrammarFnAnnotation {
-        GrammarFnAnnotation {
+/// Grammar for declaring a function's permissions
+#[derive(Debug)]
+pub struct GrammarPermissions {
+    is_valid: bool,
+    done: bool,
+    stage: StagesAnnotation,
+    p_list: Vec<Permissions>,
+}
+
+impl GrammarProperty {
+    fn new() -> GrammarProperty {
+        GrammarProperty {
             is_valid: true,
             done: false,
-            annotation_type,
-            stage: GFAStages::Initialized,
-            p_list: Vec::<FunctionAnnotations>::new(),
+            stage: StagesAnnotation::Initialized,
+            p_list: Vec::<Properties>::new(),
         }
     }
-}
 
-impl Grammar for GrammarFnAnnotation {
-    /// Iterate through the line
-    ///
-    /// Stages:
-    ///
-    /// 0. Begin, expect semi-colon
-    /// 1. Has double colon, expect values or new line
     fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
         if self.done {
             return None;
         }
         let mut error_message: Option<CompilerProblem> = None;
         match self.stage {
-            GFAStages::Initialized => match next.symbol {
+            StagesAnnotation::Initialized => match next.symbol {
                 Symbol::DoubleColon => {
-                    self.stage = GFAStages::ExpectValues;
+                    self.stage = StagesAnnotation::ExpectValues;
                 }
                 _ => {
                     self.is_valid = false;
@@ -461,46 +449,29 @@ impl Grammar for GrammarFnAnnotation {
                     ));
                 }
             },
-            GFAStages::ExpectValues => match next.symbol {
-                Symbol::Value => match self.annotation_type {
-                    // Match on permissions
-                    FunctionAnnotations::Perm(_) => self
-                        .p_list
-                        .push(FunctionAnnotations::Perm(Permissions::from_str(&next.text))),
-                    // Match on properties
-                    FunctionAnnotations::Prop(_) => match next.text.as_str() {
-                        "Pure" => self
-                            .p_list
-                            .push(FunctionAnnotations::Prop(Properties::Pure)),
-                        "Public" => self
-                            .p_list
-                            .push(FunctionAnnotations::Prop(Properties::Public)),
-                        "Export" => self
-                            .p_list
-                            .push(FunctionAnnotations::Prop(Properties::Export)),
-                        _ => {
-                            self.is_valid = false;
-                            self.done = true;
-                            error_message = Some(CompilerProblem::new(
-                                ProblemClass::Error,
-                                &format!("unrecognized property {}.", next.text),
-                                &format!("valid properties are:\n{:?}", PROPERTY_LIST),
-                                next.line,
-                                next.word,
-                            ));
-                        }
-                    },
+            StagesAnnotation::ExpectValues => match next.symbol {
+                Symbol::Value => match next.text.as_str() {
+                    "Pure" => self.p_list.push(Properties::Pure),
+                    "Public" => self.p_list.push(Properties::Public),
+                    "Export" => self.p_list.push(Properties::Export),
+                    _ => {
+                        self.is_valid = false;
+                        self.done = true;
+                        error_message = Some(CompilerProblem::new(
+                            ProblemClass::Error,
+                            &format!("unrecognized property {}.", next.text),
+                            &format!("valid properties are:\n{:?}", PROPERTY_LIST),
+                            next.line,
+                            next.word,
+                        ));
+                    }
                 },
                 Symbol::Newline => {
                     if self.p_list.is_empty() {
-                        let list_type_str = match self.annotation_type {
-                            FunctionAnnotations::Perm(_) => "permission",
-                            FunctionAnnotations::Prop(_) => "property",
-                        };
                         error_message = Some(CompilerProblem::new(
                             ProblemClass::Warning,
-                            &format!("empty {list_type_str} list"),
-                            &format!("either remove the {list_type_str} list or add items"),
+                            &format!("empty property list"),
+                            &format!("either remove the property list or add properties"),
                             next.line,
                             next.word,
                         ));
@@ -523,73 +494,136 @@ impl Grammar for GrammarFnAnnotation {
         }
         error_message
     }
-
-    fn get_arguments(&self) -> Option<ArgumentVector> {
-        Some(ArgumentVector::Annotation(self.p_list.clone()))
-    }
 }
 
-// -------------------- Grammar: Variable Assignment --------------------
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum AssignmentTypes {
-    Initialize, // let x = ...
-    Mutate,     // set x = ...
-}
-
-#[derive(Debug)]
-enum VariableAssignmentStages {
-    FindingName,
-    GettingIndexValue,
-    DeclaringType,
-    SeekingTypeName,
-    CheckingMutability,
-    HandlingValues,
-}
-
-#[derive(Debug)]
-pub struct GrammarVariableAssignments {
-    is_valid: bool,
-    done: bool,
-    stage: VariableAssignmentStages,
-    assignment_type: AssignmentTypes,
-    type_provided: bool, // if provided, type check (later), otherwise run type inference (later)
-    data_type: PrimitiveDataType,
-    name: String,
-    mutable: bool,
-    index_text: Option<String>,
-    arguments: Vec<Token>,
-}
-
-impl GrammarVariableAssignments {
-    pub fn new(assignment_type: AssignmentTypes) -> GrammarVariableAssignments {
-        GrammarVariableAssignments {
+impl GrammarPermissions {
+    fn new() -> GrammarPermissions {
+        GrammarPermissions {
             is_valid: true,
             done: false,
-            stage: VariableAssignmentStages::FindingName,
-            assignment_type,
-            type_provided: false,
-            data_type: PrimitiveDataType::Void,
-            name: "unknown".to_string(),
-            mutable: false,
-            index_text: None,
-            arguments: Vec::<Token>::new(),
+            stage: StagesAnnotation::Initialized,
+            p_list: Vec::<Permissions>::new(),
         }
     }
-}
 
-impl Grammar for GrammarVariableAssignments {
     fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
         if self.done {
             return None;
         }
         let mut error_message: Option<CompilerProblem> = None;
         match self.stage {
-            VariableAssignmentStages::FindingName => match next.symbol {
+            StagesAnnotation::Initialized => match next.symbol {
+                Symbol::DoubleColon => {
+                    self.stage = StagesAnnotation::ExpectValues;
+                }
+                _ => {
+                    self.is_valid = false;
+                    self.done = true;
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!(
+                            "permission list is invalid - expected a `::` but found {}",
+                            next.text
+                        ),
+                        "a permission list should look like this: `#Permissions :: A B C`.",
+                        next.line,
+                        next.word,
+                    ));
+                }
+            },
+            StagesAnnotation::ExpectValues => match next.symbol {
+                Symbol::Value => self.p_list.push(Permissions::from_str(&next.text)),
+                Symbol::Newline => {
+                    if self.p_list.is_empty() {
+                        error_message = Some(CompilerProblem::new(
+                            ProblemClass::Warning,
+                            &format!("empty permission list"),
+                            &format!("either remove the permission list or add properties"),
+                            next.line,
+                            next.word,
+                        ));
+                        self.is_valid = false;
+                    }
+                    self.done = true;
+                }
+                _ => {
+                    self.is_valid = false;
+                    self.done = true;
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!("expected a valid permission name or a new line, but received an unexpected token instead. the offending token is {}, which has symbol {:?}.", next.text, next.symbol),
+                        "a permission list should look like this: `#Permissions :: A B C`.",
+                        next.line,
+                        next.word,
+                    ));
+                }
+            },
+        }
+        error_message
+    }
+}
+
+// -------------------- Grammar: Variable Assignment --------------------
+
+#[derive(Debug, PartialEq, Eq)]
+enum AssignmentTypes {
+    Initialize, // let x = ...
+    Mutate,     // set x = ...
+}
+
+#[derive(Debug)]
+enum StagesVariableAssignment {
+    FindingName,
+    GettingIndexValue,
+    DeclaringType,
+    SeekingTypeName,
+    CheckingMutability,
+}
+
+#[derive(Debug)]
+pub struct GrammarVariableAssignments {
+    is_valid: bool,
+    done: bool,
+    stage: StagesVariableAssignment,
+    assignment_type: AssignmentTypes,
+    type_provided: bool,
+    data_type: PrimitiveDataType,
+    name: String,
+    mutable: bool,
+    index_text: Option<String>,
+}
+
+impl GrammarVariableAssignments {
+    fn new(symbol: Symbol) -> GrammarVariableAssignments {
+        let this_type = match symbol {
+            Symbol::Let => AssignmentTypes::Initialize,
+            Symbol::Mut => AssignmentTypes::Mutate,
+            _ => panic!("internal compiler error: received illegal symbol while initializing GrammarVariableAssignments -- please file a bug report.")
+        };
+        GrammarVariableAssignments {
+            is_valid: true,
+            done: false,
+            stage: StagesVariableAssignment::FindingName,
+            assignment_type: this_type,
+            type_provided: false,
+            data_type: PrimitiveDataType::Void,
+            name: "unknown".to_string(),
+            mutable: false,
+            index_text: None,
+        }
+    }
+
+    fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
+        if self.done {
+            return None;
+        }
+        let mut error_message: Option<CompilerProblem> = None;
+        match self.stage {
+            StagesVariableAssignment::FindingName => match next.symbol {
                 Symbol::Value => {
                     if next.text.is_ascii() {
                         self.name = next.text.to_string();
-                        self.stage = VariableAssignmentStages::DeclaringType;
+                        self.stage = StagesVariableAssignment::DeclaringType;
                     } else {
                         CompilerProblem::new(
                             ProblemClass::Error,
@@ -610,10 +644,10 @@ impl Grammar for GrammarVariableAssignments {
                     self.done = true;
                 }
             },
-            VariableAssignmentStages::GettingIndexValue => match next.symbol {
+            StagesVariableAssignment::GettingIndexValue => match next.symbol {
                 Symbol::Value => {
                     self.index_text = Some(next.text.to_string());
-                    self.stage = VariableAssignmentStages::DeclaringType;
+                    self.stage = StagesVariableAssignment::DeclaringType;
                 }
                 _ => {
                     error_message = Some(
@@ -623,7 +657,7 @@ impl Grammar for GrammarVariableAssignments {
                     self.done = true;
                 }
             },
-            VariableAssignmentStages::DeclaringType => match next.symbol {
+            StagesVariableAssignment::DeclaringType => match next.symbol {
                 // Double colon implies we're going to get a type
                 Symbol::At => match self.assignment_type {
                     AssignmentTypes::Initialize => {
@@ -634,16 +668,16 @@ impl Grammar for GrammarVariableAssignments {
                         self.done = true;
                     }
                     AssignmentTypes::Mutate => {
-                        self.stage = VariableAssignmentStages::GettingIndexValue
+                        self.stage = StagesVariableAssignment::GettingIndexValue
                     }
                 },
                 Symbol::DoubleColon => {
-                    self.stage = VariableAssignmentStages::SeekingTypeName;
+                    self.stage = StagesVariableAssignment::SeekingTypeName;
                 }
                 // Equals sign implies no type present
                 Symbol::EqualSign => {
                     self.type_provided = false;
-                    self.stage = VariableAssignmentStages::HandlingValues;
+                    self.done = true;
                     let keyword = if self.assignment_type == AssignmentTypes::Initialize {
                         "let"
                     } else {
@@ -675,40 +709,11 @@ impl Grammar for GrammarVariableAssignments {
                     self.done = true;
                 }
             },
-            VariableAssignmentStages::SeekingTypeName => match next.symbol {
-                Symbol::TypeBool => {
-                    self.type_provided = true;
-                    self.data_type = PrimitiveDataType::Bool;
-                    self.stage = VariableAssignmentStages::CheckingMutability;
-                }
-                Symbol::TypeInt => {
-                    self.type_provided = true;
-                    self.data_type = PrimitiveDataType::Int;
-                    self.stage = VariableAssignmentStages::CheckingMutability;
-                }
-                Symbol::TypeFloat => {
-                    self.type_provided = true;
-                    self.data_type = PrimitiveDataType::Float;
-                    self.stage = VariableAssignmentStages::CheckingMutability;
-                }
-                Symbol::TypeStr => {
-                    self.type_provided = true;
-                    self.data_type = PrimitiveDataType::Str;
-                    self.stage = VariableAssignmentStages::CheckingMutability;
-                }
-                Symbol::TypeVoid => {
-                    self.type_provided = true;
-                    self.data_type = PrimitiveDataType::Void;
-                    self.stage = VariableAssignmentStages::CheckingMutability;
-                }
-                Symbol::TypeAuto => {
-                    self.type_provided = false;
-                    self.stage = VariableAssignmentStages::CheckingMutability;
-                }
-                Symbol::Mut => {
+            StagesVariableAssignment::SeekingTypeName => {
+                if next.symbol == Symbol::Mut {
                     self.type_provided = false;
                     self.mutable = true;
-                    self.stage = VariableAssignmentStages::HandlingValues;
+                    self.done = true;
                     let keyword = if self.assignment_type == AssignmentTypes::Initialize {
                         "let"
                     } else {
@@ -725,24 +730,31 @@ impl Grammar for GrammarVariableAssignments {
                         next.word,
                     ));
                 }
-                _ => {
-                    error_message = Some(CompilerProblem::new(
-                        ProblemClass::Error,
-                        &format!("expected a type name, but found `{}`", next.text),
-                        "provide a valid type such as `str` or `int`",
-                        next.line,
-                        next.word,
-                    ));
-                    self.is_valid = false;
-                    self.done = true;
+                match PrimitiveDataType::from_symbol(next.symbol) {
+                    Some(d) => {
+                        self.type_provided = true;
+                        self.data_type = d;
+                        self.stage = StagesVariableAssignment::CheckingMutability;
+                    }
+                    None => {
+                        error_message = Some(CompilerProblem::new(
+                            ProblemClass::Error,
+                            &format!("expected a type name, but found `{}`", next.text),
+                            "provide a valid type such as `str` or `int`",
+                            next.line,
+                            next.word,
+                        ));
+                        self.is_valid = false;
+                        self.done = true;
+                    }
                 }
-            },
-            VariableAssignmentStages::CheckingMutability => match next.symbol {
+            }
+            StagesVariableAssignment::CheckingMutability => match next.symbol {
                 Symbol::Mut => {
                     self.mutable = true;
-                    self.stage = VariableAssignmentStages::HandlingValues;
+                    self.done = true;
                 }
-                Symbol::EqualSign => self.stage = VariableAssignmentStages::HandlingValues,
+                Symbol::EqualSign => self.done = true,
                 _ => {
                     error_message = Some(CompilerProblem::new(
                         ProblemClass::Error,
@@ -755,137 +767,8 @@ impl Grammar for GrammarVariableAssignments {
                     self.done = true;
                 }
             },
-            VariableAssignmentStages::HandlingValues => {
-                // Can't (conveniently) use match here b/c of branch on banned symbols below
-                if next.symbol == Symbol::Newline {
-                    // Newline with no args == problem
-                    if self.arguments.is_empty() {
-                        error_message = Some(
-                            CompilerProblem::new(ProblemClass::Error, &format!("expected an expression (a 'right hand side') for the value of {}, but received a newline instead", self.name), "provide a value for the variable", next.line, next.word)
-                        );
-                        self.is_valid = false;
-                        self.done = true;
-                    } else {
-                        // Newline with args == done
-                        self.done = true;
-                    }
-                    // Handle special case -- type + mut given, means `=` is next symbol, so we ignore it in that case only
-                } else if next.symbol == Symbol::EqualSign && self.arguments.is_empty() {
-                    return None;
-                }
-                // These symbols are not allowed on RHS of expression
-                else if BANNED_RHS_SYMBOLS.contains(&next.symbol) {
-                    error_message = Some(CompilerProblem::new(
-                        ProblemClass::Error,
-                        &format!(
-                            "received an illegal keyword in the assignment of {}: {}",
-                            self.name, next.text
-                        ),
-                        "your variable assignment should be an expression",
-                        next.line,
-                        next.word,
-                    ));
-                    self.is_valid = false;
-                    self.done = true;
-                } else {
-                    self.arguments.push(next.clone())
-                }
-            }
         }
         error_message
-    }
-
-    fn get_arguments(&self) -> Option<ArgumentVector> {
-        Some(ArgumentVector::Tokens(self.arguments.clone()))
-    }
-}
-
-// -------------------- Grammar: Return Statements --------------------
-
-#[derive(Debug)]
-enum ReturnStages {
-    Initialized,
-    ProcessingArguments,
-}
-
-/// The grammar for importing a file or functions/data
-#[derive(Debug)]
-pub struct GrammarReturns {
-    is_valid: bool,
-    done: bool,
-    stage: ReturnStages,
-    arguments: Vec<Token>,
-}
-
-impl GrammarReturns {
-    pub fn new() -> GrammarReturns {
-        GrammarReturns {
-            is_valid: true,
-            done: false,
-            stage: ReturnStages::Initialized,
-            arguments: Vec::<Token>::new(),
-        }
-    }
-}
-
-impl Grammar for GrammarReturns {
-    fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
-        if self.done {
-            return None;
-        }
-        let mut error_message = None;
-        match self.stage {
-            ReturnStages::Initialized => {
-                if next.symbol == Symbol::Newline {
-                    error_message = Some(CompilerProblem::new(
-                        ProblemClass::Error,
-                        "return statement is empty",
-                        "make sure your return statement is an expression",
-                        next.line,
-                        next.word,
-                    ));
-                } else if BANNED_RHS_SYMBOLS.contains(&next.symbol) {
-                    error_message = Some(CompilerProblem::new(
-                        ProblemClass::Error,
-                        &format!(
-                            "a return statement contained a reserved symbol: {}",
-                            next.text
-                        ),
-                        "make sure your return statement is an expression",
-                        next.line,
-                        next.word,
-                    ));
-                } else {
-                    self.arguments.push(next.clone());
-                    self.stage = ReturnStages::ProcessingArguments;
-                }
-            }
-            ReturnStages::ProcessingArguments => {
-                if next.symbol == Symbol::Newline {
-                    self.done = true;
-                }
-                if BANNED_RHS_SYMBOLS.contains(&next.symbol) {
-                    error_message = Some(CompilerProblem::new(
-                        ProblemClass::Error,
-                        &format!(
-                            "a return statement contained a reserved symbol: {}",
-                            next.text
-                        ),
-                        "make sure your return statement is an expression",
-                        next.line,
-                        next.word,
-                    ));
-                } else {
-                    self.arguments.push(next.clone());
-                    self.stage = ReturnStages::ProcessingArguments;
-                }
-            }
-        }
-        error_message
-    }
-
-    fn get_arguments(&self) -> Option<ArgumentVector> {
-        Some(ArgumentVector::Tokens(self.arguments.clone()))
     }
 }
 
@@ -894,7 +777,7 @@ impl Grammar for GrammarReturns {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lex::lex;
+    use crate::lex::{lex, Symbol};
 
     #[test]
     fn declare_import_1() {
@@ -997,7 +880,7 @@ mod tests {
 
     #[test]
     fn declare_variable_init() {
-        let mut gv = GrammarVariableAssignments::new(AssignmentTypes::Initialize);
+        let mut gv = GrammarVariableAssignments::new(Symbol::Let);
         let line: &str = "let a :: int = 1";
         let tokens = lex(line);
         for t in tokens.into_iter().skip(1) {
@@ -1009,12 +892,11 @@ mod tests {
         assert_eq!(gv.mutable, false);
         assert!(gv.type_provided);
         assert_eq!(gv.name, "a".to_string());
-        assert_eq!(gv.arguments[0].text, "1".to_string());
     }
 
     #[test]
     fn declare_variable_init_mut() {
-        let mut gv = GrammarVariableAssignments::new(AssignmentTypes::Initialize);
+        let mut gv = GrammarVariableAssignments::new(Symbol::Let);
         let line: &str = "let a :: str mut = \"meow\"";
         let tokens = lex(line);
         for t in tokens.into_iter().skip(1) {
@@ -1027,12 +909,11 @@ mod tests {
         assert_eq!(gv.mutable, true);
         assert!(gv.type_provided);
         assert_eq!(gv.name, "a".to_string());
-        assert_eq!(gv.arguments[0].text, "\"meow\"".to_string());
     }
 
     #[test]
     fn declare_variable_init_mut_no_type() {
-        let mut gv = GrammarVariableAssignments::new(AssignmentTypes::Initialize);
+        let mut gv = GrammarVariableAssignments::new(Symbol::Let);
         let line: &str = "let a :: mut = 42";
         let tokens = lex(line);
         for t in tokens.into_iter().skip(1) {
@@ -1044,12 +925,11 @@ mod tests {
         assert_eq!(gv.mutable, true);
         assert_eq!(gv.type_provided, false);
         assert_eq!(gv.name, "a".to_string());
-        assert_eq!(gv.arguments[0].text, "42".to_string());
     }
 
     #[test]
     fn declare_variable_init_mut_auto() {
-        let mut gv = GrammarVariableAssignments::new(AssignmentTypes::Initialize);
+        let mut gv = GrammarVariableAssignments::new(Symbol::Let);
         let line: &str = "let a :: auto mut = 42";
         let tokens = lex(line);
         for t in tokens.into_iter().skip(1) {
@@ -1061,12 +941,11 @@ mod tests {
         assert_eq!(gv.mutable, true);
         assert_eq!(gv.type_provided, false);
         assert_eq!(gv.name, "a".to_string());
-        assert_eq!(gv.arguments[0].text, "42".to_string());
     }
 
     #[test]
     fn declare_variable_mutate() {
-        let mut gv = GrammarVariableAssignments::new(AssignmentTypes::Mutate);
+        let mut gv = GrammarVariableAssignments::new(Symbol::Mut);
         let line: &str = "set a = 1";
         let tokens = lex(line);
         for t in tokens.into_iter().skip(1) {
@@ -1074,12 +953,11 @@ mod tests {
         }
         assert!(gv.is_valid);
         assert_eq!(gv.name, "a".to_string());
-        assert_eq!(gv.arguments[0].text, "1".to_string());
     }
 
     #[test]
     fn declare_variable_mutate_index() {
-        let mut gv = GrammarVariableAssignments::new(AssignmentTypes::Mutate);
+        let mut gv = GrammarVariableAssignments::new(Symbol::Mut);
         let line: &str = "set a @ 10 = 1";
         let tokens = lex(line);
         for t in tokens.into_iter().skip(1) {
@@ -1090,6 +968,5 @@ mod tests {
         assert!(gv.index_text.is_some());
         assert_eq!(gv.index_text.unwrap(), "10".to_string());
         assert_eq!(gv.name, "a".to_string());
-        assert_eq!(gv.arguments[0].text, "1".to_string());
     }
 }
