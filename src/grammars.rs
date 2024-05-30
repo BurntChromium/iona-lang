@@ -12,8 +12,15 @@ use crate::parse::{PrimitiveDataType, Variable};
 use crate::permissions::Permissions;
 use crate::properties::{Properties, PROPERTY_LIST};
 
+pub enum ArgumentVector {
+    Annotation(Vec<FunctionAnnotations>),
+    Variables(Vec<Variable>),
+    Tokens(Vec<Token>),
+}
+
 pub trait Grammar: Debug {
     fn step(&mut self, next: &Token) -> Option<CompilerProblem>;
+    fn get_arguments(&self) -> Option<ArgumentVector>;
 }
 
 // -------------------- Grammar: Empty / Void / Skip --------------------
@@ -36,6 +43,9 @@ impl GrammarEmpty {
 
 impl Grammar for GrammarEmpty {
     fn step(&mut self, _: &Token) -> Option<CompilerProblem> {
+        None
+    }
+    fn get_arguments(&self) -> Option<ArgumentVector> {
         None
     }
 }
@@ -140,6 +150,10 @@ impl Grammar for GrammarImports {
             },
         }
         error_message
+    }
+
+    fn get_arguments(&self) -> Option<ArgumentVector> {
+        Some(ArgumentVector::Tokens(self.arguments.clone()?))
     }
 }
 
@@ -373,6 +387,10 @@ impl Grammar for GrammarFunctionDeclaration {
         self.last_symbol = next.symbol;
         error_message
     }
+
+    fn get_arguments(&self) -> Option<ArgumentVector> {
+        Some(ArgumentVector::Variables(self.arguments.clone()))
+    }
 }
 
 // -------------------- Grammar: Function Annotations --------------------
@@ -383,7 +401,7 @@ enum GFAStages {
     ExpectValues,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum FunctionAnnotations {
     Prop(Properties),
     Perm(Permissions),
@@ -504,6 +522,10 @@ impl Grammar for GrammarFnAnnotation {
             },
         }
         error_message
+    }
+
+    fn get_arguments(&self) -> Option<ArgumentVector> {
+        Some(ArgumentVector::Annotation(self.p_list.clone()))
     }
 }
 
@@ -772,6 +794,10 @@ impl Grammar for GrammarVariableAssignments {
         }
         error_message
     }
+
+    fn get_arguments(&self) -> Option<ArgumentVector> {
+        Some(ArgumentVector::Tokens(self.arguments.clone()))
+    }
 }
 
 // -------------------- Grammar: Return Statements --------------------
@@ -856,6 +882,10 @@ impl Grammar for GrammarReturns {
             }
         }
         error_message
+    }
+
+    fn get_arguments(&self) -> Option<ArgumentVector> {
+        Some(ArgumentVector::Tokens(self.arguments.clone()))
     }
 }
 

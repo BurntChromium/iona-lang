@@ -4,11 +4,13 @@
 //!
 //! We represent our AST as a flat list of `Nodes`, and each `Node` is assigned a Grammar and some metadata.
 
+use std::collections::BTreeMap;
 use std::fmt::Debug;
+use std::fs::Permissions;
 
-use crate::compiler_errors::CompilerProblem;
+use crate::compiler_errors::{CompilerProblem, ProblemClass};
 use crate::grammars::{
-    self, FunctionAnnotations, Grammar, GrammarEmpty, GrammarFnAnnotation,
+    self, ArgumentVector, FunctionAnnotations, Grammar, GrammarEmpty, GrammarFnAnnotation,
     GrammarFunctionDeclaration, GrammarImports, GrammarReturns, GrammarVariableAssignments,
 };
 use crate::lex::{Symbol, Token};
@@ -41,7 +43,7 @@ pub enum NodeType {
 }
 
 /// Primitive data types (i.e. types not held in a container or struct)
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PrimitiveDataType {
     Void,
     Int,
@@ -50,7 +52,15 @@ pub enum PrimitiveDataType {
     Bool,
 }
 
-pub trait Data: Debug {}
+pub trait Data: Debug {
+    fn box_clone(&self) -> Box<dyn Data>;
+}
+
+impl Clone for Box<dyn Data> {
+    fn clone(&self) -> Self {
+        self.box_clone()
+    }
+}
 
 #[derive(Debug)]
 pub struct Node {
@@ -69,7 +79,7 @@ impl Node {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Variable {
     pub name: String,
     pub data_type: PrimitiveDataType,
@@ -156,6 +166,7 @@ pub fn parse(tokens: Vec<Token>) -> (Vec<Node>, Vec<CompilerProblem>) {
                 Box::new(GrammarEmpty::new())
             }
         };
+        // We will get 1 "error" per token (error can be None!)
         let mut errors: Vec<Option<CompilerProblem>> = Vec::new();
         let future = iterator.clone().peekable();
         for t in future {
@@ -166,13 +177,15 @@ pub fn parse(tokens: Vec<Token>) -> (Vec<Node>, Vec<CompilerProblem>) {
             }
         }
         // Then force the iterator to catch up (if NOT in fused mode => fused mode implies single line of source code)
-        iterator.nth(errors.len());
+        iterator.nth(errors.len().saturating_sub(1));
         // Check for errors (this happens after skip because consumes iterator)
         let mut okay = true;
         for e in errors {
             if let Some(problem) = e {
+                if problem.class == ProblemClass::Error {
+                    okay = false;
+                }
                 error_list.push(problem);
-                okay = false;
             }
         }
         if okay {
@@ -181,4 +194,78 @@ pub fn parse(tokens: Vec<Token>) -> (Vec<Node>, Vec<CompilerProblem>) {
     }
     // Return or provide a list of errors
     (nodes, error_list)
+}
+
+pub struct FunctionData {
+    pub args: Vec<Variable>,
+    pub return_type: PrimitiveDataType,
+    pub properties: Vec<Properties>,
+    pub permissions: Vec<Permissions>,
+}
+
+impl FunctionData {
+    pub fn new() -> FunctionData {
+        FunctionData {
+            args: Vec::new(),
+            return_type: PrimitiveDataType::Void,
+            properties: Vec::new(),
+            permissions: Vec::new(),
+        }
+    }
+
+    pub fn arity(&self) -> usize {
+        self.args.len()
+    }
+}
+
+pub fn populate_function_table(nodes: &Vec<Node>) -> BTreeMap<String, FunctionData> {
+    let table: BTreeMap<String, FunctionData> = BTreeMap::new();
+    for node in nodes {
+        if node.node_type == NodeType::FunctionDeclaration {
+            let mut data = FunctionData::new();
+            match node.grammar.get_arguments().unwrap() {
+                ArgumentVector::Variables(v) => {
+                    data.args = v;
+                }
+                _ => {}
+            }
+        }
+    }
+    table
+}
+
+// -------------------- Unit Tests --------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lex::lex;
+
+    #[test]
+    fn parse_line_1() {
+        let code: &str = "fn five :: int {";
+        let tokens = lex(code);
+        let (nodes, errors) = parse(tokens);
+        assert_eq!(nodes.len(), 1);
+        assert!(errors.is_empty());
+        assert_eq!(nodes[0].node_type, NodeType::FunctionDeclaration);
+    }
+
+    #[test]
+    fn parse_function_1() {
+        let code: &str = "// Empty comment
+        fn five :: int {
+            return 5
+        }";
+        let tokens = lex(code);
+        println!("{:#?}", tokens);
+        let (nodes, errors) = parse(tokens);
+        println!("{:#?}", nodes);
+        println!("{:#?}", errors);
+        assert_eq!(nodes.len(), 4);
+        assert!(errors.is_empty());
+        assert_eq!(nodes[1].node_type, NodeType::FunctionDeclaration);
+        assert_eq!(nodes[2].node_type, NodeType::ReturnStatement);
+        assert_eq!(nodes[3].node_type, NodeType::CloseScope);
+    }
 }
