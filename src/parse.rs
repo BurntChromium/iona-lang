@@ -10,7 +10,7 @@ use std::fs::Permissions;
 
 use crate::compiler_errors::{CompilerProblem, ProblemClass};
 use crate::grammars::Grammar;
-use crate::lex::{Symbol, Token};
+use crate::lex::{Symbol, Token, VALID_EXPRESSION_TOKENS};
 use crate::properties::Properties;
 
 /// Nodes are objects corresponding to an IR, and each node has exactly one type (each line of code has one effect, or "role" to play).
@@ -26,12 +26,14 @@ use crate::properties::Properties;
 /// - EffectualFunctionInvocation: some fn call without let/set/return (i.e. it exists only for whatever side effect is triggered by calling it)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeType {
+    Comment,                     // done
     FunctionDeclaration,         // done
     PropertyDeclaration,         // done
     PermissionsDeclaration,      // done
     ContractDeclaration,         // TODO
     VariableAssignment,          // done
     TypeDeclaration,             // newtype, TODO
+    Expression,                  // TODO
     EffectualFunctionInvocation, // TODO
     ImportStatement,             // done
     ReturnStatement,             // done
@@ -53,10 +55,10 @@ impl PrimitiveDataType {
     pub fn from_symbol(sym: Symbol) -> Option<PrimitiveDataType> {
         match sym {
             Symbol::TypeVoid => Some(PrimitiveDataType::Void),
-            Symbol::TypeInt => Some(PrimitiveDataType::Void),
-            Symbol::TypeFloat => Some(PrimitiveDataType::Void),
-            Symbol::TypeStr => Some(PrimitiveDataType::Void),
-            Symbol::TypeBool => Some(PrimitiveDataType::Void),
+            Symbol::TypeInt => Some(PrimitiveDataType::Int),
+            Symbol::TypeFloat => Some(PrimitiveDataType::Float),
+            Symbol::TypeStr => Some(PrimitiveDataType::Str),
+            Symbol::TypeBool => Some(PrimitiveDataType::Bool),
             _ => None,
         }
     }
@@ -160,17 +162,27 @@ pub fn parse(tokens: Vec<Token>) -> (Vec<Node>, Vec<CompilerProblem>) {
                 node_type = NodeType::CloseScope;
                 Grammar::new(token.symbol)
             }
-            // Skip comments
-            _ => {
-                node_type = NodeType::Empty;
+            // Skip comments with empty grammar
+            Symbol::Comment => {
+                node_type = NodeType::Comment;
                 Grammar::new(token.symbol)
+            }
+            _ => {
+                if VALID_EXPRESSION_TOKENS.contains(&token.symbol) {
+                    node_type = NodeType::Expression;
+                    Grammar::new(token.symbol)
+                } else {
+                    node_type = NodeType::Empty;
+                    Grammar::new(token.symbol)
+                }
             }
         };
         // We will get 1 "error" per token (error can be None!)
         let mut errors: Vec<Option<CompilerProblem>> = Vec::new();
         let future = iterator.clone().peekable();
         for t in future {
-            if t.line == token.line {
+            // Loop until the grammar finishes
+            if !grammar.is_done() {
                 errors.push(grammar.step(t));
             } else {
                 break;
@@ -260,10 +272,12 @@ mod tests {
         let (nodes, errors) = parse(tokens);
         println!("{:#?}", nodes);
         println!("{:#?}", errors);
-        assert_eq!(nodes.len(), 4);
+        assert_eq!(nodes.len(), 5);
         assert!(errors.is_empty());
+        assert_eq!(nodes[0].node_type, NodeType::Comment);
         assert_eq!(nodes[1].node_type, NodeType::FunctionDeclaration);
         assert_eq!(nodes[2].node_type, NodeType::ReturnStatement);
-        assert_eq!(nodes[3].node_type, NodeType::CloseScope);
+        assert_eq!(nodes[3].node_type, NodeType::Expression);
+        assert_eq!(nodes[4].node_type, NodeType::CloseScope);
     }
 }

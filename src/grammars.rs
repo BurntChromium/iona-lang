@@ -7,7 +7,7 @@
 use std::fmt::Debug;
 
 use crate::compiler_errors::{CompilerProblem, ProblemClass};
-use crate::lex::{Symbol, Token};
+use crate::lex::{Symbol, Token, VALID_EXPRESSION_TOKENS};
 use crate::parse::{PrimitiveDataType, Variable};
 use crate::permissions::Permissions;
 use crate::properties::{Properties, PROPERTY_LIST};
@@ -21,9 +21,9 @@ pub enum Grammar {
     Permission(GrammarPermissions),
     VariableAssignment(GrammarVariableAssignments),
     Return,
-    Expression, // TODO
-    Enum,       // TODO
-    Struct,     // TODO
+    Expression(GrammarExpression),
+    Enum,   // TODO
+    Struct, // TODO
 }
 
 impl Grammar {
@@ -37,7 +37,13 @@ impl Grammar {
                 Grammar::VariableAssignment(GrammarVariableAssignments::new(symbol))
             }
             Symbol::Return => Grammar::Return,
-            _ => Grammar::Empty,
+            _ => {
+                if VALID_EXPRESSION_TOKENS.contains(&symbol) {
+                    Grammar::Expression(GrammarExpression::new())
+                } else {
+                    Grammar::Empty
+                }
+            }
         }
     }
 
@@ -50,9 +56,24 @@ impl Grammar {
             Grammar::Permission(g) => g.step(token),
             Grammar::VariableAssignment(g) => g.step(token),
             Grammar::Return => None,
-            Grammar::Expression => None,
+            Grammar::Expression(g) => g.step(token),
             Grammar::Enum => None,
             Grammar::Struct => None,
+        }
+    }
+
+    pub fn is_done(&self) -> bool {
+        match self {
+            Grammar::Empty => true,
+            Grammar::Import(g) => g.done,
+            Grammar::Function(g) => g.done,
+            Grammar::Property(g) => g.done,
+            Grammar::Permission(g) => g.done,
+            Grammar::VariableAssignment(g) => g.done,
+            Grammar::Return => true,
+            Grammar::Expression(g) => g.done,
+            Grammar::Enum => true,
+            Grammar::Struct => true,
         }
     }
 }
@@ -166,6 +187,7 @@ enum StagesFunction {
     NameProcessed,
     SeekingArguments,
     SeekingBracket,
+    SeekingNewLine,
 }
 
 /// The grammar for declaring a function -> a big state machine
@@ -367,7 +389,7 @@ impl GrammarFunctionDeclaration {
             }
             StagesFunction::SeekingBracket => match next.symbol {
                 Symbol::BraceOpen => {
-                    self.done = true;
+                    self.stage = StagesFunction::SeekingNewLine;
                 }
                 _ => {
                     self.is_valid = false;
@@ -375,6 +397,22 @@ impl GrammarFunctionDeclaration {
                     error_message = Some(CompilerProblem::new(
                         ProblemClass::Error,
                         &format!("expected '{{', but received '{}'.", next.text),
+                        "check your function arguments.",
+                        next.line,
+                        next.word,
+                    ));
+                }
+            },
+            StagesFunction::SeekingNewLine => match next.symbol {
+                Symbol::Newline => {
+                    self.done = true;
+                }
+                _ => {
+                    self.is_valid = false;
+                    self.done = true;
+                    error_message = Some(CompilerProblem::new(
+                        ProblemClass::Error,
+                        &format!("expected new line, but received '{}'.", next.text),
                         "check your function arguments.",
                         next.line,
                         next.word,
@@ -737,15 +775,21 @@ impl GrammarVariableAssignments {
                         self.stage = StagesVariableAssignment::CheckingMutability;
                     }
                     None => {
-                        error_message = Some(CompilerProblem::new(
-                            ProblemClass::Error,
-                            &format!("expected a type name, but found `{}`", next.text),
-                            "provide a valid type such as `str` or `int`",
-                            next.line,
-                            next.word,
-                        ));
-                        self.is_valid = false;
-                        self.done = true;
+                        if next.symbol == Symbol::TypeAuto || next.symbol == Symbol::Mut {
+                            self.type_provided = false;
+                            self.data_type = PrimitiveDataType::Void;
+                            self.stage = StagesVariableAssignment::CheckingMutability;
+                        } else {
+                            error_message = Some(CompilerProblem::new(
+                                ProblemClass::Error,
+                                &format!("expected a type name, but found `{}`", next.text),
+                                "provide a valid type such as `str` or `int`, or use `auto` to infer the type",
+                                next.line,
+                                next.word,
+                            ));
+                            self.is_valid = false;
+                            self.done = true;
+                        }
                     }
                 }
             }
@@ -767,6 +811,48 @@ impl GrammarVariableAssignments {
                     self.done = true;
                 }
             },
+        }
+        error_message
+    }
+}
+
+// -------------------- Grammar: Expression --------------------
+
+#[derive(Debug)]
+pub struct GrammarExpression {
+    done: bool,
+    is_valid: bool,
+    tokens: Vec<Token>,
+}
+
+impl GrammarExpression {
+    pub fn new() -> GrammarExpression {
+        GrammarExpression {
+            done: false,
+            is_valid: true,
+            tokens: Vec::new(),
+        }
+    }
+
+    pub fn step(&mut self, next: &Token) -> Option<CompilerProblem> {
+        let mut error_message: Option<CompilerProblem> = None;
+        if VALID_EXPRESSION_TOKENS.contains(&next.symbol) {
+            self.tokens.push(next.clone());
+        } else if next.symbol == Symbol::Newline {
+            self.done = true;
+        } else {
+            error_message = Some(CompilerProblem::new(
+                ProblemClass::Error,
+                &format!(
+                    "expected a function, variable, or operation, found {}",
+                    next.text
+                ),
+                "you may have more than 1 type for this variable",
+                next.line,
+                next.word,
+            ));
+            self.is_valid = false;
+            self.done = true;
         }
         error_message
     }
@@ -814,12 +900,14 @@ mod tests {
     #[test]
     fn declare_fn_simple_1() {
         let mut gfd = GrammarFunctionDeclaration::new();
-        let line: &str = "fn add :: a int -> b int -> int {\n";
+        let line: &str = "fn add :: a int -> b int -> int {
+        ";
         let tokens = lex(line);
         // Skip the first token (the `fn` token)
         for t in tokens.into_iter().skip(1) {
             gfd.step(&t);
         }
+        println!("{:?}", gfd);
         assert!(gfd.done);
         assert!(gfd.is_valid);
         assert_eq!(gfd.fn_name, "add");
@@ -838,12 +926,14 @@ mod tests {
     #[test]
     fn declare_fn_simple_2() {
         let mut gfd = GrammarFunctionDeclaration::new();
-        let line: &str = "fn copy_to :: old_filepath str -> new_filepath str -> void {";
+        let line: &str = "fn copy_to :: old_filepath str -> new_filepath str -> void {
+        ";
         let tokens = lex(line);
         // Skip the first token (the `fn` token)
         for t in tokens.into_iter().skip(1) {
             gfd.step(&t);
         }
+        println!("{:?}", gfd);
         assert!(gfd.done);
         assert!(gfd.is_valid);
         assert_eq!(gfd.fn_name, "copy_to");
@@ -862,7 +952,7 @@ mod tests {
     #[test]
     fn declare_fn_no_name() {
         let mut gfd = GrammarFunctionDeclaration::new();
-        let line: &str = "fn :: old_filepath str -> new_filepath str -> void {";
+        let line: &str = "fn :: old_filepath str -> new_filepath str -> void {\n";
         let tokens = lex(line);
         let mut errors: Vec<Option<CompilerProblem>> = Vec::new();
         // Skip the first token (the `fn` token)
@@ -917,7 +1007,7 @@ mod tests {
         let line: &str = "let a :: mut = 42";
         let tokens = lex(line);
         for t in tokens.into_iter().skip(1) {
-            gv.step(&t);
+            println!("{:#?}", gv.step(&t));
         }
         println!("{:#?}", gv);
         assert!(gv.is_valid);
@@ -933,7 +1023,7 @@ mod tests {
         let line: &str = "let a :: auto mut = 42";
         let tokens = lex(line);
         for t in tokens.into_iter().skip(1) {
-            gv.step(&t);
+            println!("{:#?}", gv.step(&t));
         }
         println!("{:#?}", gv);
         assert!(gv.is_valid);
