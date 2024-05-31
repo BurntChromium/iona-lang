@@ -77,6 +77,8 @@ Iona supports contracts: runtime checks to prevent a program from entering an in
 
 The goal of contracts is to try and catch potential runtime errors at compile time. Suppose you have a division function `fn div :: numerator -> denominator -> quotient`. You could always manually check in the body that `denominator != 0`, but if you make it a contract the compiler can warn you ahead of time about runtime problems based on the inputs you provide. For instance, when composing functions we can check that the post conditions of the inner function are at least as strict as the pre conditions of outer function.
 
+At least with pre- and post- conditions this is the same idea as [refinement types](https://en.wikipedia.org/wiki/Refinement_type), like Liquid Haskell.
+
 ```
 // Function with a (precondition) contract
 // If a contract does not evaluate to True, it errors (think of a contract like a "whitelist" of allowed inputs)
