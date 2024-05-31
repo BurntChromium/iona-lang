@@ -167,6 +167,10 @@ pub fn parse(tokens: Vec<Token>) -> (Vec<Node>, Vec<CompilerProblem>) {
                 node_type = NodeType::Comment;
                 Grammar::new(token.symbol)
             }
+            // Skip newlines
+            Symbol::Newline => {
+                continue;
+            }
             _ => {
                 if VALID_EXPRESSION_TOKENS.contains(&token.symbol) {
                     node_type = NodeType::Expression;
@@ -188,8 +192,10 @@ pub fn parse(tokens: Vec<Token>) -> (Vec<Node>, Vec<CompilerProblem>) {
                 break;
             }
         }
-        // Then force the iterator to catch up (if NOT in fused mode => fused mode implies single line of source code)
-        iterator.nth(errors.len().saturating_sub(1));
+        // Then force the iterator to catch up
+        if errors.len() > 1 {
+            iterator.nth(errors.len().saturating_sub(1));
+        }
         // Check for errors (this happens after skip because consumes iterator)
         let mut okay = true;
         for e in errors {
@@ -230,6 +236,7 @@ impl FunctionData {
     }
 }
 
+/// Construct a function table from the nodes we get from parse
 pub fn populate_function_table(nodes: &Vec<Node>) -> BTreeMap<String, FunctionData> {
     let table: BTreeMap<String, FunctionData> = BTreeMap::new();
     for node in nodes {
@@ -279,5 +286,31 @@ mod tests {
         assert_eq!(nodes[2].node_type, NodeType::ReturnStatement);
         assert_eq!(nodes[3].node_type, NodeType::Expression);
         assert_eq!(nodes[4].node_type, NodeType::CloseScope);
+        match &nodes[1].grammar {
+            Grammar::Function(g) => assert_eq!(g.fn_name, "five"),
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn parse_function_2() {
+        let code: &str = "// This function adds two numbers
+        fn add :: a int -> b int -> int {
+            #Properties :: Pure Export
+            return a + b
+        }";
+        let tokens = lex(code);
+        println!("{:#?}", tokens);
+        let (nodes, errors) = parse(tokens);
+        println!("{:#?}", nodes);
+        println!("{:#?}", errors);
+        assert_eq!(nodes.len(), 6);
+        assert!(errors.is_empty());
+        assert_eq!(nodes[0].node_type, NodeType::Comment);
+        assert_eq!(nodes[1].node_type, NodeType::FunctionDeclaration);
+        assert_eq!(nodes[2].node_type, NodeType::PropertyDeclaration);
+        assert_eq!(nodes[3].node_type, NodeType::ReturnStatement);
+        assert_eq!(nodes[4].node_type, NodeType::Expression);
+        assert_eq!(nodes[5].node_type, NodeType::CloseScope);
     }
 }

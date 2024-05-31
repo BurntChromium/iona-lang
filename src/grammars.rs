@@ -204,9 +204,9 @@ pub struct GrammarFunctionDeclaration {
     done: bool,
     stage: StagesFunction,
     last_symbol: Symbol,
-    fn_name: String,
+    pub fn_name: String,
     pub arguments: Vec<Variable>,
-    return_type: PrimitiveDataType,
+    pub return_type: PrimitiveDataType,
 }
 
 impl GrammarFunctionDeclaration {
