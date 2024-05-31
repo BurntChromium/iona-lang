@@ -9,11 +9,8 @@ use std::fmt::Debug;
 use std::fs::Permissions;
 
 use crate::compiler_errors::{CompilerProblem, ProblemClass};
-use crate::grammars::{
-    self, ArgumentVector, FunctionAnnotations, Grammar, GrammarEmpty, GrammarFnAnnotation,
-    GrammarFunctionDeclaration, GrammarImports, GrammarReturns, GrammarVariableAssignments,
-};
-use crate::lex::{Symbol, Token};
+use crate::grammars::Grammar;
+use crate::lex::{Symbol, Token, VALID_EXPRESSION_TOKENS};
 use crate::properties::Properties;
 
 /// Nodes are objects corresponding to an IR, and each node has exactly one type (each line of code has one effect, or "role" to play).
@@ -29,12 +26,14 @@ use crate::properties::Properties;
 /// - EffectualFunctionInvocation: some fn call without let/set/return (i.e. it exists only for whatever side effect is triggered by calling it)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeType {
+    Comment,                     // done
     FunctionDeclaration,         // done
     PropertyDeclaration,         // done
     PermissionsDeclaration,      // done
     ContractDeclaration,         // TODO
     VariableAssignment,          // done
     TypeDeclaration,             // newtype, TODO
+    Expression,                  // TODO
     EffectualFunctionInvocation, // TODO
     ImportStatement,             // done
     ReturnStatement,             // done
@@ -52,6 +51,19 @@ pub enum PrimitiveDataType {
     Bool,
 }
 
+impl PrimitiveDataType {
+    pub fn from_symbol(sym: Symbol) -> Option<PrimitiveDataType> {
+        match sym {
+            Symbol::TypeVoid => Some(PrimitiveDataType::Void),
+            Symbol::TypeInt => Some(PrimitiveDataType::Int),
+            Symbol::TypeFloat => Some(PrimitiveDataType::Float),
+            Symbol::TypeStr => Some(PrimitiveDataType::Str),
+            Symbol::TypeBool => Some(PrimitiveDataType::Bool),
+            _ => None,
+        }
+    }
+}
+
 pub trait Data: Debug {
     fn box_clone(&self) -> Box<dyn Data>;
 }
@@ -65,12 +77,12 @@ impl Clone for Box<dyn Data> {
 #[derive(Debug)]
 pub struct Node {
     pub node_type: NodeType,
-    pub grammar: Box<dyn Grammar>,
+    pub grammar: Grammar,
     pub source_line: usize,
 }
 
 impl Node {
-    pub fn new(node_type: NodeType, grammar: Box<dyn Grammar>, source_line: usize) -> Node {
+    pub fn new(node_type: NodeType, grammar: Grammar, source_line: usize) -> Node {
         Node {
             node_type,
             grammar,
@@ -109,75 +121,81 @@ pub fn parse(tokens: Vec<Token>) -> (Vec<Node>, Vec<CompilerProblem>) {
         let node_type: NodeType;
         // On a match, grab all tokens in the same line
         // Map the appropriate grammar to that line of tokens, and accumulate any errors
-        let mut grammar: Box<dyn Grammar> = match token.symbol {
+        let mut grammar: Grammar = match token.symbol {
             // Handle imports
             Symbol::Import => {
                 node_type = NodeType::ImportStatement;
-                Box::new(GrammarImports::new())
+                Grammar::new(token.symbol)
             }
             // Handle function declaration
             Symbol::FunctionDeclare => {
                 node_type = NodeType::FunctionDeclaration;
-                Box::new(GrammarFunctionDeclaration::new())
+                Grammar::new(token.symbol)
             }
             // Handle property declarations (pass in dummy value to signal type)
             Symbol::PropertyDeclaration => {
                 node_type = NodeType::PropertyDeclaration;
-                Box::new(GrammarFnAnnotation::new(FunctionAnnotations::Prop(
-                    Properties::Pure,
-                )))
+                Grammar::new(token.symbol)
             }
             // Handle permissions declarations (pass in dummy value to signal type)
             Symbol::PermissionsDeclaration => {
                 node_type = NodeType::PermissionsDeclaration;
-                Box::new(GrammarFnAnnotation::new(FunctionAnnotations::Perm(
-                    crate::permissions::Permissions::Custom,
-                )))
+                Grammar::new(token.symbol)
             }
             // Handle variable declarations
             Symbol::Set | Symbol::Let => {
                 node_type = NodeType::VariableAssignment;
-                Box::new(GrammarVariableAssignments::new(
-                    if token.symbol == Symbol::Let {
-                        grammars::AssignmentTypes::Initialize
-                    } else {
-                        grammars::AssignmentTypes::Mutate
-                    },
-                ))
+                Grammar::new(token.symbol)
             }
             // Handle contracts
             Symbol::ContractPre | Symbol::ContractPost | Symbol::ContractInvariant => {
                 node_type = NodeType::ContractDeclaration;
-                Box::new(GrammarFunctionDeclaration::new())
+                Grammar::new(token.symbol)
             }
             // Handle return statements
             Symbol::Return => {
                 node_type = NodeType::ReturnStatement;
-                Box::new(GrammarReturns::new())
+                Grammar::new(token.symbol)
             }
             // Handle scope closes
             Symbol::BraceClose => {
                 node_type = NodeType::CloseScope;
-                Box::new(GrammarEmpty::new())
+                Grammar::new(token.symbol)
             }
-            // Skip comments
+            // Skip comments with empty grammar
+            Symbol::Comment => {
+                node_type = NodeType::Comment;
+                Grammar::new(token.symbol)
+            }
+            // Skip newlines
+            Symbol::Newline => {
+                continue;
+            }
             _ => {
-                node_type = NodeType::Empty;
-                Box::new(GrammarEmpty::new())
+                if VALID_EXPRESSION_TOKENS.contains(&token.symbol) {
+                    node_type = NodeType::Expression;
+                    Grammar::new(token.symbol)
+                } else {
+                    node_type = NodeType::Empty;
+                    Grammar::new(token.symbol)
+                }
             }
         };
         // We will get 1 "error" per token (error can be None!)
         let mut errors: Vec<Option<CompilerProblem>> = Vec::new();
         let future = iterator.clone().peekable();
         for t in future {
-            if t.line == token.line {
+            // Loop until the grammar finishes
+            if !grammar.is_done() {
                 errors.push(grammar.step(t));
             } else {
                 break;
             }
         }
-        // Then force the iterator to catch up (if NOT in fused mode => fused mode implies single line of source code)
-        iterator.nth(errors.len().saturating_sub(1));
+        // Then force the iterator to catch up
+        if errors.len() > 1 {
+            iterator.nth(errors.len().saturating_sub(1));
+        }
         // Check for errors (this happens after skip because consumes iterator)
         let mut okay = true;
         for e in errors {
@@ -218,15 +236,14 @@ impl FunctionData {
     }
 }
 
+/// Construct a function table from the nodes we get from parse
 pub fn populate_function_table(nodes: &Vec<Node>) -> BTreeMap<String, FunctionData> {
     let table: BTreeMap<String, FunctionData> = BTreeMap::new();
     for node in nodes {
         if node.node_type == NodeType::FunctionDeclaration {
             let mut data = FunctionData::new();
-            match node.grammar.get_arguments().unwrap() {
-                ArgumentVector::Variables(v) => {
-                    data.args = v;
-                }
+            match &node.grammar {
+                Grammar::Function(fg) => data.args = fg.arguments.clone(),
                 _ => {}
             }
         }
@@ -262,10 +279,38 @@ mod tests {
         let (nodes, errors) = parse(tokens);
         println!("{:#?}", nodes);
         println!("{:#?}", errors);
-        assert_eq!(nodes.len(), 4);
+        assert_eq!(nodes.len(), 5);
         assert!(errors.is_empty());
+        assert_eq!(nodes[0].node_type, NodeType::Comment);
         assert_eq!(nodes[1].node_type, NodeType::FunctionDeclaration);
         assert_eq!(nodes[2].node_type, NodeType::ReturnStatement);
-        assert_eq!(nodes[3].node_type, NodeType::CloseScope);
+        assert_eq!(nodes[3].node_type, NodeType::Expression);
+        assert_eq!(nodes[4].node_type, NodeType::CloseScope);
+        match &nodes[1].grammar {
+            Grammar::Function(g) => assert_eq!(g.fn_name, "five"),
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn parse_function_2() {
+        let code: &str = "// This function adds two numbers
+        fn add :: a int -> b int -> int {
+            #Properties :: Pure Export
+            return a + b
+        }";
+        let tokens = lex(code);
+        println!("{:#?}", tokens);
+        let (nodes, errors) = parse(tokens);
+        println!("{:#?}", nodes);
+        println!("{:#?}", errors);
+        assert_eq!(nodes.len(), 6);
+        assert!(errors.is_empty());
+        assert_eq!(nodes[0].node_type, NodeType::Comment);
+        assert_eq!(nodes[1].node_type, NodeType::FunctionDeclaration);
+        assert_eq!(nodes[2].node_type, NodeType::PropertyDeclaration);
+        assert_eq!(nodes[3].node_type, NodeType::ReturnStatement);
+        assert_eq!(nodes[4].node_type, NodeType::Expression);
+        assert_eq!(nodes[5].node_type, NodeType::CloseScope);
     }
 }
