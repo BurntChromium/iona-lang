@@ -440,7 +440,7 @@ pub struct GrammarProperty {
     is_valid: bool,
     done: bool,
     stage: StagesAnnotation,
-    p_list: Vec<Properties>,
+    pub p_list: Vec<Properties>,
 }
 
 /// Grammar for declaring a function's permissions
@@ -449,7 +449,7 @@ pub struct GrammarPermissions {
     is_valid: bool,
     done: bool,
     stage: StagesAnnotation,
-    p_list: Vec<Permissions>,
+    pub p_list: Vec<Permissions>,
 }
 
 impl GrammarProperty {

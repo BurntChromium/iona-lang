@@ -1,4 +1,4 @@
-//! Parse constructs an abstract syntax tree or equivalent
+//! The `parse` module constructs an abstract syntax tree (AST) or an equivalent
 //!
 //! Organizational note: the arrangements of permissible token sequences are defined by the `grammar` crate. Each line of Iona code corresponds to one singular Grammar, and can be parsed into that grammar independently.
 //!
@@ -6,11 +6,11 @@
 
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::fs::Permissions;
 
 use crate::compiler_errors::{CompilerProblem, ProblemClass};
 use crate::grammars::Grammar;
 use crate::lex::{Symbol, Token, VALID_EXPRESSION_TOKENS};
+use crate::permissions::Permissions;
 use crate::properties::Properties;
 
 /// Nodes are objects corresponding to an IR, and each node has exactly one type (each line of code has one effect, or "role" to play).
@@ -75,10 +75,14 @@ impl Clone for Box<dyn Data> {
 }
 
 #[derive(Debug)]
+/// A Node in the AST (represented as a list)
+///
+/// `parent_node_line` is principally used to track scope
 pub struct Node {
     pub node_type: NodeType,
     pub grammar: Grammar,
     pub source_line: usize,
+    pub parent_node_line: Option<usize>,
 }
 
 impl Node {
@@ -87,6 +91,7 @@ impl Node {
             node_type,
             grammar,
             source_line,
+            parent_node_line: None,
         }
     }
 }
@@ -214,6 +219,8 @@ pub fn parse(tokens: Vec<Token>) -> (Vec<Node>, Vec<CompilerProblem>) {
     (nodes, error_list)
 }
 
+/// Data contained within the function table for easy type checking
+#[derive(Debug)]
 pub struct FunctionData {
     pub args: Vec<Variable>,
     pub return_type: PrimitiveDataType,
@@ -236,19 +243,102 @@ impl FunctionData {
     }
 }
 
-/// Construct a function table from the nodes we get from parse
-pub fn populate_function_table(nodes: &Vec<Node>) -> BTreeMap<String, FunctionData> {
-    let table: BTreeMap<String, FunctionData> = BTreeMap::new();
+// -------------------- AST Post Processing --------------------
+
+/// Get the scopes of various objects in the AST
+pub fn compute_scopes(nodes: &mut Vec<Node>) -> Vec<CompilerProblem> {
+    let mut scope_depth: usize = 0;
+    let mut last_seen_scope_line: usize = 0;
+    let mut errors: Vec<CompilerProblem> = Vec::new();
     for node in nodes {
-        if node.node_type == NodeType::FunctionDeclaration {
-            let mut data = FunctionData::new();
-            match &node.grammar {
-                Grammar::Function(fg) => data.args = fg.arguments.clone(),
-                _ => {}
+        match node.node_type {
+            NodeType::FunctionDeclaration => {
+                if scope_depth > 0 {
+                    errors.push(CompilerProblem::new(ProblemClass::Error, "issue with function declaration: either there's an unclosed scope or you tried to declare one function side another", "check for missing braces `}`, and don't try to declare a nested function", node.source_line, 0));
+                } else {
+                    last_seen_scope_line = node.source_line;
+                    scope_depth += 1;
+                }
+            }
+            NodeType::CloseScope => {
+                scope_depth -= 1;
+            }
+            // TODO: handle match statements
+            _ => {
+                node.parent_node_line = Some(last_seen_scope_line);
             }
         }
     }
-    table
+    errors
+}
+
+/// Construct a function table from the nodes we get from parse
+pub fn populate_function_table(
+    nodes: &Vec<Node>,
+) -> Result<BTreeMap<String, FunctionData>, Vec<CompilerProblem>> {
+    let mut table: BTreeMap<String, FunctionData> = BTreeMap::new();
+    let mut errors: Vec<CompilerProblem> = Vec::new();
+    let mut data: Option<FunctionData> = None;
+    let mut function_name: Option<String> = None;
+    let mut function_line: usize = 0;
+    for node in nodes {
+        if node.node_type == NodeType::FunctionDeclaration {
+            data = Some(FunctionData::new());
+            function_line = node.source_line;
+            match &node.grammar {
+                Grammar::Function(fg) => {
+                    data.as_mut().unwrap().args = fg.arguments.clone();
+                    data.as_mut().unwrap().return_type = fg.return_type;
+                    function_name = Some(fg.fn_name.clone());
+                }
+                _ => {}
+            }
+        } else {
+            // We can assume every property is declared after a fn unless there's a syntax error
+            match &node.grammar {
+                Grammar::Property(pg) => match data {
+                    Some(ref mut d) => d.properties = pg.p_list.clone(),
+                    None => {
+                        errors.push(CompilerProblem::new(
+                            ProblemClass::Error,
+                            "property list declared outside of function",
+                            "make sure all properties are inside a function",
+                            node.source_line,
+                            0,
+                        ));
+                    }
+                },
+                Grammar::Permission(pg) => match data {
+                    Some(ref mut d) => d.permissions = pg.p_list.clone(),
+                    None => {
+                        errors.push(CompilerProblem::new(
+                            ProblemClass::Error,
+                            "property list declared outside of function",
+                            "make sure all properties are inside a function",
+                            node.source_line,
+                            0,
+                        ));
+                    }
+                },
+                _ => {}
+            }
+            // If we see a scope closure corresponding to our function, then package up our data
+            if node.node_type == NodeType::CloseScope
+                && node.parent_node_line == Some(function_line)
+            {
+                if data.is_some() {
+                    table.insert(function_name.clone().unwrap(), data.unwrap());
+                }
+                data = None;
+                function_name = None;
+            }
+        }
+    }
+    if errors.is_empty() {
+        Err(errors)
+    } else {
+        Ok(table)
+    }
 }
 
 // -------------------- Unit Tests --------------------
@@ -312,5 +402,28 @@ mod tests {
         assert_eq!(nodes[3].node_type, NodeType::ReturnStatement);
         assert_eq!(nodes[4].node_type, NodeType::Expression);
         assert_eq!(nodes[5].node_type, NodeType::CloseScope);
+    }
+
+    #[test]
+    fn populate_function_table_1() {
+        let code: &str = "// This function adds two numbers
+        fn add :: a int -> b int -> int {
+            #Properties :: Pure Export
+            return a + b
+        }";
+        let tokens = lex(code);
+        let (nodes, _) = parse(tokens);
+        let f_table = populate_function_table(&nodes);
+        assert!(f_table.is_ok());
+        let function_table = f_table.unwrap();
+        println!("--");
+        for (name, data) in function_table.iter() {
+            println!("{name}: {:#?}", data);
+        }
+        assert!(function_table.get("add").is_some());
+        assert_eq!(
+            function_table.get("add").unwrap().return_type,
+            PrimitiveDataType::Int
+        );
     }
 }

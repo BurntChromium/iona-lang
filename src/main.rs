@@ -12,7 +12,8 @@ mod parse;
 mod permissions;
 mod properties;
 
-use crate::compiler_errors::{display_problem, ProblemClass};
+use crate::parse::{compute_scopes, populate_function_table};
+use compiler_errors::{display_problem, CompilerProblem, ProblemClass};
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logging level
@@ -39,21 +40,38 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Lex the file
     let tokens = lex::lex(&program_root);
     // Parse the file
-    let (_, errors) = parse::parse(tokens);
-    let mut okay: bool = true;
+    let (mut nodes, mut errors) = parse::parse(tokens);
     let elapsed = now.elapsed();
     println!("Finished compiling in {:.2?}", elapsed);
-    for err in errors {
-        if err.class == ProblemClass::Error {
-            okay = false;
-        }
-        if err.class >= log_level {
-            display_problem(&program_root, "issue during parsing", err);
-        }
+    // Do post-processing on the AST
+    errors.extend(compute_scopes(&mut nodes));
+    let function_table = populate_function_table(&nodes);
+    if function_table.is_err() {
+        errors.extend(function_table.unwrap_err());
     }
+    // Display parsing errors
+    let okay = display_error_list(&program_root, errors, log_level);
+    // Final output
     if okay {
         Ok(())
     } else {
         Err("program failed during parsing".into())
     }
+}
+
+fn display_error_list(
+    program_text: &str,
+    errors: Vec<CompilerProblem>,
+    log_level: ProblemClass,
+) -> bool {
+    let mut okay = true;
+    for err in errors {
+        if err.class == ProblemClass::Error {
+            okay = false;
+        }
+        if err.class >= log_level {
+            display_problem(&program_text, "issue during parsing", err);
+        }
+    }
+    okay
 }
