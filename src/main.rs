@@ -5,6 +5,7 @@ use std::error::Error;
 use std::fs;
 use std::time::Instant;
 
+mod codegen_c;
 mod compiler_errors;
 mod grammars;
 mod lex;
@@ -43,8 +44,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (mut nodes, mut errors) = parse::parse(tokens);
     let elapsed = now.elapsed();
     println!("Finished compiling in {:.2?}", elapsed);
-    // Do post-processing on the AST
+    // Do post-processing on the AST -- just stick all errors onto the parse list and print all at once
+    // 1) Compute scopes (we MUST do this before trying to build function table)
     errors.extend(compute_scopes(&mut nodes));
+    // 2) Build a function table
     let function_table = populate_function_table(&nodes);
     if function_table.is_err() {
         errors.extend(function_table.unwrap_err());
