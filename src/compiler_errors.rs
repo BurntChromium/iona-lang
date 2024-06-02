@@ -19,7 +19,7 @@ impl Display for ProblemClass {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CompilerProblem {
     pub class: ProblemClass,
     pub message: String,
@@ -49,7 +49,7 @@ impl CompilerProblem {
 /// Pass in the raw program text and a compiler problem to print out issues
 ///
 /// The `message_context` is a string written by the caller of the function that errored (So error_message might be: "Problem with a function declaration", and then the actual error message is whatever was returned by the fn)
-pub fn display_problem(program_text: &str, message_context: &str, problem: CompilerProblem) {
+pub fn display_problem(program_text: &str, message_context: &str, problem: &CompilerProblem) {
     // Context is 3 lines: the line above, the problem line, and the line below
     let top_line = problem.line.saturating_sub(2);
     let color_hex_code: &str = match problem.class {

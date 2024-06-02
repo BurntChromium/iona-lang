@@ -13,7 +13,10 @@ mod parse;
 mod permissions;
 mod properties;
 
-use crate::parse::{compute_scopes, populate_function_table};
+use crate::{
+    codegen_c::emit_c_header,
+    parse::{compute_scopes, populate_function_table},
+};
 use compiler_errors::{display_problem, CompilerProblem, ProblemClass};
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -50,12 +53,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     // 2) Build a function table
     let function_table = populate_function_table(&nodes);
     if function_table.is_err() {
-        errors.extend(function_table.unwrap_err());
+        errors.extend(function_table.as_ref().unwrap_err().clone());
     }
     // Display parsing errors
-    let okay = display_error_list(&program_root, errors, log_level);
+    let okay = display_error_list(&program_root, &errors, log_level);
     // Final output
     if okay {
+        // Write out the header
+        if function_table.is_ok() {
+            let _ = emit_c_header(&function_table.as_ref().unwrap());
+        }
         Ok(())
     } else {
         Err("program failed during parsing".into())
@@ -64,7 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn display_error_list(
     program_text: &str,
-    errors: Vec<CompilerProblem>,
+    errors: &Vec<CompilerProblem>,
     log_level: ProblemClass,
 ) -> bool {
     let mut okay = true;

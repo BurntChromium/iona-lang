@@ -62,6 +62,16 @@ impl PrimitiveDataType {
             _ => None,
         }
     }
+
+    pub fn to_str(&self) -> &str {
+        match self {
+            PrimitiveDataType::Void => "void",
+            PrimitiveDataType::Bool => "bool",
+            PrimitiveDataType::Int => "int",
+            PrimitiveDataType::Float => "float",
+            PrimitiveDataType::Str => "char",
+        }
+    }
 }
 
 pub trait Data: Debug {
