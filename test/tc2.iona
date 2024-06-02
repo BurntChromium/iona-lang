@@ -1,10 +1,11 @@
-import read_file write_file from std.files
+import write_file from std.files
 
-fn main {
-    println "Hello, world"
+// Adds two numbers together
+fn add :: a int -> b int -> int {
+    return a + b
 }
 
-// Returns the number 5
-fn five :: int {
-    return 5
+// Adds two numbers together
+fn write_whatever {
+    write_file "abc" "blah.txt"
 }
