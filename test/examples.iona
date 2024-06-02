@@ -1,5 +1,3 @@
-module examples
-
 import read_file write_file from std.files
 
 fn main {

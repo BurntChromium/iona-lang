@@ -261,6 +261,7 @@ pub fn compute_scopes(nodes: &mut Vec<Node>) -> Vec<CompilerProblem> {
                 }
             }
             NodeType::CloseScope => {
+                node.parent_node_line = Some(last_seen_scope_line);
                 scope_depth -= 1;
             }
             // TODO: handle match statements
@@ -334,7 +335,7 @@ pub fn populate_function_table(
             }
         }
     }
-    if errors.is_empty() {
+    if errors.len() > 0 {
         Err(errors)
     } else {
         Ok(table)
@@ -365,10 +366,7 @@ mod tests {
             return 5
         }";
         let tokens = lex(code);
-        println!("{:#?}", tokens);
         let (nodes, errors) = parse(tokens);
-        println!("{:#?}", nodes);
-        println!("{:#?}", errors);
         assert_eq!(nodes.len(), 5);
         assert!(errors.is_empty());
         assert_eq!(nodes[0].node_type, NodeType::Comment);
@@ -390,10 +388,7 @@ mod tests {
             return a + b
         }";
         let tokens = lex(code);
-        println!("{:#?}", tokens);
         let (nodes, errors) = parse(tokens);
-        println!("{:#?}", nodes);
-        println!("{:#?}", errors);
         assert_eq!(nodes.len(), 6);
         assert!(errors.is_empty());
         assert_eq!(nodes[0].node_type, NodeType::Comment);
@@ -412,11 +407,11 @@ mod tests {
             return a + b
         }";
         let tokens = lex(code);
-        let (nodes, _) = parse(tokens);
+        let (mut nodes, _) = parse(tokens);
+        compute_scopes(&mut nodes);
         let f_table = populate_function_table(&nodes);
         assert!(f_table.is_ok());
         let function_table = f_table.unwrap();
-        println!("--");
         for (name, data) in function_table.iter() {
             println!("{name}: {:#?}", data);
         }
