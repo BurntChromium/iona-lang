@@ -10,6 +10,7 @@ mod compiler_errors;
 mod grammars;
 mod lex;
 mod parse;
+mod parse_expressions;
 mod permissions;
 mod properties;
 

@@ -116,7 +116,7 @@ pub const BANNED_RHS_SYMBOLS: [Symbol; 18] = [
     Symbol::TypeAuto,
 ];
 
-pub const VALID_EXPRESSION_TOKENS: [Symbol; 11] = [
+pub const VALID_EXPRESSION_TOKENS: [Symbol; 13] = [
     Symbol::Value,
     Symbol::OpPlus,
     Symbol::OpMinus,
@@ -128,6 +128,8 @@ pub const VALID_EXPRESSION_TOKENS: [Symbol; 11] = [
     Symbol::OpGte,
     Symbol::OpLte,
     Symbol::At,
+    Symbol::ParenOpen,
+    Symbol::ParenClose,
 ];
 
 /// A token is a symbol and its context in the source code

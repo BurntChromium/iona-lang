@@ -35,7 +35,7 @@ pub fn emit_c_header(function_table: &BTreeMap<String, FunctionData>) -> Result<
     }
     // Write to a file
     let path = "./codegen/iona_generated_header.h";
-    println!("writing C header file to {path}");
+    println!("wrote C header file to {path}");
     let mut output = File::create(path)?;
     write!(output, "{}", buffer_str)
 }

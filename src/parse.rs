@@ -264,7 +264,7 @@ pub fn compute_scopes(nodes: &mut Vec<Node>) -> Vec<CompilerProblem> {
         match node.node_type {
             NodeType::FunctionDeclaration => {
                 if scope_depth > 0 {
-                    errors.push(CompilerProblem::new(ProblemClass::Error, "issue with function declaration: either there's an unclosed scope or you tried to declare one function side another", "check for missing braces `}`, and don't try to declare a nested function", node.source_line, 0));
+                    errors.push(CompilerProblem::new(ProblemClass::Error, "issue with function declaration: either there's an unclosed scope or you tried to declare one function inside another", "check for missing braces `}`, and don't try to declare a nested function", node.source_line, 0));
                 } else {
                     last_seen_scope_line = node.source_line;
                     scope_depth += 1;
