@@ -4,7 +4,34 @@ Iona is a hobby programming language to research advanced programming language f
 
 Iona is somewhere between a functional and an imperative paradigm (like Rust).
 
-## Features
+### Current Status
+
+A(n incomplete) list of things done and things that need doing.
+
+**Top level**
+
+❌ Ready for personal use and experimentation
+❌ Ready for professional or production use
+
+✅ Functions
+❌ Container types (list, vec, etc.)
+❌ Custom types (structs, enums, etc.)
+❌ Tests (testing within Iona programs, not testing of the compiler)
+
+**Internals**
+
+✅ Lexing
+✅ First-pass parsing (a fixed set of grammars)
+❌ Expression parsing
+✅ Post-parsing processing: scope computation
+✅ Post-parsing processing: function declaration
+❌ Static analysis: function requirements 
+❌ Static analysis: type checking
+✅ Code generation: function declarations
+❌ Code generation: function bodies/execution logic
+❌ Code generation: custom and container types
+
+## Language Features
 
 ### Function Permissions
 
@@ -88,3 +115,22 @@ fn div :: a int -> b int -> int {
     return a / b
 }
 ```
+
+## Compiler Features
+
+### Good Compiler Errors
+
+They're not quite Rust quality (yet), but the compiler tries to help as much as it can.
+
+Example (real output is colored, tedious to show in Markdown):
+
+```sh
+$ cargo run ./example-test-file.iona
+
+Finished compiling in 186.36µs
+error: issue during parsing on line 4: argument 'a' has no type information.
+   3 | // Adds two numbers together
+   4 | fn add :: a -> b int -> int {
+   5 |     return a + b
+ hint: add a type for this argument
+ ```

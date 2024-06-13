@@ -24,8 +24,8 @@ pub struct CompilerProblem {
     pub class: ProblemClass,
     pub message: String,
     hint: String,
-    line: usize,
-    word_index: usize,
+    pub line: usize,
+    pub word_index: usize,
 }
 
 impl CompilerProblem {
@@ -51,7 +51,7 @@ impl CompilerProblem {
 /// The `message_context` is a string written by the caller of the function that errored (So error_message might be: "Problem with a function declaration", and then the actual error message is whatever was returned by the fn)
 pub fn display_problem(program_text: &str, message_context: &str, problem: &CompilerProblem) {
     // Context is 3 lines: the line above, the problem line, and the line below
-    let top_line = problem.line.saturating_sub(2);
+    let top_line = problem.line.saturating_sub(1);
     let color_hex_code: &str = match problem.class {
         ProblemClass::Error => "\x1b[1;31m",
         ProblemClass::Warning => "\x1b[1;33m",

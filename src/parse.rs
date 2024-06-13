@@ -272,7 +272,7 @@ pub fn compute_scopes(nodes: &mut Vec<Node>) -> Vec<CompilerProblem> {
             }
             NodeType::CloseScope => {
                 node.parent_node_line = Some(last_seen_scope_line);
-                scope_depth -= 1;
+                scope_depth = scope_depth.saturating_sub(1);
             }
             // TODO: handle match statements
             _ => {
