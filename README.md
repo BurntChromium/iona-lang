@@ -10,26 +10,26 @@ A(n incomplete) list of things done and things that need doing.
 
 **Top level**
 
-❌ Ready for personal use and experimentation
-❌ Ready for professional or production use
+- ❌ Ready for personal use and experimentation
+- ❌ Ready for professional or production use
 
-✅ Functions
-❌ Container types (list, vec, etc.)
-❌ Custom types (structs, enums, etc.)
-❌ Tests (testing within Iona programs, not testing of the compiler)
+- ✅ Functions
+- ❌ Container types (list, vec, etc.)
+- ❌ Custom types (structs, enums, etc.)
+- ❌ Tests (testing within Iona programs, not testing of the compiler)
 
 **Internals**
 
-✅ Lexing
-✅ First-pass parsing (a fixed set of grammars)
-❌ Expression parsing
-✅ Post-parsing processing: scope computation
-✅ Post-parsing processing: function declaration
-❌ Static analysis: function requirements 
-❌ Static analysis: type checking
-✅ Code generation: function declarations
-❌ Code generation: function bodies/execution logic
-❌ Code generation: custom and container types
+- ✅ Lexing
+- ✅ First-pass parsing (a fixed set of grammars)
+- ❌ Expression parsing
+- ✅ Post-parsing processing: scope computation
+- ✅ Post-parsing processing: function declaration
+- ❌ Static analysis: function requirements 
+- ❌ Static analysis: type checking
+- ✅ Code generation: function declarations
+- ❌ Code generation: function bodies/execution logic
+- ❌ Code generation: custom and container types
 
 ## Language Features
 
