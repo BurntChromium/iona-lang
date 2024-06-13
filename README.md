@@ -10,9 +10,11 @@ A(n incomplete) list of things done and things that need doing.
 
 **Top level**
 
+Bottom line
 - ❌ Ready for personal use and experimentation
 - ❌ Ready for professional or production use
 
+Major milestones
 - ✅ Functions
 - ❌ Container types (list, vec, etc.)
 - ❌ Custom types (structs, enums, etc.)
