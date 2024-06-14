@@ -12,7 +12,7 @@ fn five :: int {
 // This function adds two numbers
 fn add :: a int -> b int -> int {
     #Properties :: Pure Export
-    return a + b
+    return + a b
 }
 
 // Function with a (precondition) contract
@@ -20,7 +20,7 @@ fn add :: a int -> b int -> int {
 fn div :: a int -> b int -> int {
     #Properties :: Pure Export
     #In :: b != 0 -> "b must not be 0"
-    return a / b
+    return / a b
 }
 
 fn read_modify_update :: filepath str -> void {

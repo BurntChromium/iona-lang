@@ -14,6 +14,7 @@ use crate::compiler_errors::{CompilerProblem, ProblemClass};
 use crate::lex::{Symbol, Token};
 use crate::parse::FunctionData;
 
+#[derive(Debug)]
 pub enum Operator {
     Add,
     Subtract,
@@ -48,6 +49,7 @@ impl Operator {
     }
 }
 
+#[derive(Debug)]
 pub enum Expression {
     Prefix { op: Operator, args: Vec<Object> },
     // Infix {
@@ -66,6 +68,7 @@ impl Expression {
     }
 }
 
+#[derive(Debug)]
 pub enum Literal {
     Int(i64),
     Float(f64),
@@ -118,12 +121,13 @@ impl Literal {
     }
 }
 
+#[derive(Debug)]
 pub enum Object {
     Operation(Expression),
     Value(Literal),
 }
 
-pub fn push_fn_to_stack(
+fn push_fn_to_stack(
     token: &Token,
     op: Operator,
     arg_count: usize,
@@ -166,6 +170,7 @@ pub fn parse_expression(
     let mut stack: Vec<Object> = Vec::with_capacity(tokens.len());
     // Iterate backwards over the tokens
     for token in tokens.iter().rev() {
+        println!("token: {:#?}", token);
         match token.symbol {
             Symbol::OpPlus => {
                 let outcome = push_fn_to_stack(token, Operator::Add, 2, &mut stack);
@@ -232,6 +237,7 @@ pub fn parse_expression(
                 ))
             }
         }
+        println!("stack: {:?}", stack);
     }
     if stack.is_empty() {
         let line_no: usize;
@@ -260,5 +266,53 @@ pub fn parse_expression(
             tokens.last().unwrap().line,
             tokens.last().unwrap().word,
         ));
+    }
+}
+
+// -------------------- Unit Tests --------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::matches;
+    use crate::grammars::Grammar;
+    use crate::lex::lex;
+    use crate::parse::{compute_scopes, parse, populate_function_table, NodeType};
+    
+    #[test]
+    fn parse_expression_1() {
+        let code: &str = "// This function adds two numbers
+        fn add :: a int -> b int -> int {
+            #Properties :: Pure Export
+            return + 3 4
+        }";
+        let tokens = lex(code);
+        let (mut nodes, _) = parse(tokens);
+        compute_scopes(&mut nodes);
+        let f_table = populate_function_table(&nodes);
+        println!("{:#?}", nodes);
+        assert!(f_table.is_ok());
+        let function_table = f_table.unwrap();
+        for node in nodes.iter_mut() {
+            if node.node_type == NodeType::Expression {
+                match &node.grammar {
+                    Grammar::Expression(g) => {
+                        println!("{:?}", g.tokens);
+                        let maybe_obj = parse_expression(&g.tokens, &function_table);
+                        println!("{:#?}", maybe_obj);
+                        assert!(maybe_obj.is_ok());
+                        let obj = maybe_obj.unwrap();
+                        assert!(matches!(obj, Object::Operation(..)));
+                        match obj {
+                            Object::Operation(e) => {
+                                assert!(matches!(e, Expression::Prefix { .. }));
+                            },
+                            _ => {}
+                        }
+                    },
+                    _ => assert!(false)
+                }
+            }
+        }
     }
 }

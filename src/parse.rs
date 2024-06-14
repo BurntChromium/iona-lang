@@ -10,6 +10,7 @@ use std::fmt::Debug;
 use crate::compiler_errors::{CompilerProblem, ProblemClass};
 use crate::grammars::Grammar;
 use crate::lex::{Symbol, Token, VALID_EXPRESSION_TOKENS};
+use crate::parse_expressions::Object;
 use crate::permissions::Permissions;
 use crate::properties::Properties;
 
@@ -34,7 +35,6 @@ pub enum NodeType {
     VariableAssignment,          // done
     TypeDeclaration,             // newtype, TODO
     Expression,                  // TODO
-    EffectualFunctionInvocation, // TODO
     ImportStatement,             // done
     ReturnStatement,             // done
     CloseScope,                  // done
@@ -93,6 +93,7 @@ pub struct Node {
     pub grammar: Grammar,
     pub source_line: usize,
     pub parent_node_line: Option<usize>,
+    pub expression: Option<Object>,
 }
 
 impl Node {
@@ -102,6 +103,7 @@ impl Node {
             grammar,
             source_line,
             parent_node_line: None,
+            expression: None,
         }
     }
 }
@@ -198,6 +200,13 @@ pub fn parse(tokens: Vec<Token>) -> (Vec<Node>, Vec<CompilerProblem>) {
         };
         // We will get 1 "error" per token (error can be None!)
         let mut errors: Vec<Option<CompilerProblem>> = Vec::new();
+        // The expression parser needs to see our current value
+        match grammar {
+            Grammar::Expression(ref mut g) => {
+                errors.push(g.step(token));
+            },
+            _ => {}
+        }
         let future = iterator.clone().peekable();
         for t in future {
             // Loop until the grammar finishes

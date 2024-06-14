@@ -822,7 +822,7 @@ impl GrammarVariableAssignments {
 pub struct GrammarExpression {
     done: bool,
     is_valid: bool,
-    tokens: Vec<Token>,
+    pub tokens: Vec<Token>,
 }
 
 impl GrammarExpression {

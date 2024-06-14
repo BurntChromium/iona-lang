@@ -41,7 +41,7 @@ Supply chain attacks are a growing concern for software engineers. Who knows wha
 
 Permissions look like this:
 
-```
+```ts
 import read_file write_file from std.files
 
 fn copy_to :: old_filepath str -> new_filepath str {
@@ -54,7 +54,7 @@ fn copy_to :: old_filepath str -> new_filepath str {
 
 Now suppose that you tried to write this function for a library:
 
-```
+```ts
 import read_file write_file from std.files
 import request from std.networking
 import sqrt from std.math
@@ -69,7 +69,7 @@ fn fast_sqrt :: input float -> float {
 
 This wouldn't compile -- it doesn't have the necessary permissions. So you add them. 
 
-```
+```ts
 import read_file write_file from std.files
 import request from std.networking
 import sqrt from std.math
@@ -85,7 +85,7 @@ fn fast_sqrt :: input float -> float {
 
 It compiles, great! You upload it and wait. An unsuspecting user imports your library and tries to write this code: 
 
-```
+```ts
 import fast_sqrt from sketchy_library
 
 fn main -> Void {
@@ -108,7 +108,7 @@ The goal of contracts is to try and catch potential runtime errors at compile ti
 
 At least with pre- and post- conditions this is the same idea as [refinement types](https://en.wikipedia.org/wiki/Refinement_type), like Liquid Haskell.
 
-```
+```ts
 // Function with a (precondition) contract
 // If a contract does not evaluate to True, it errors (think of a contract like a "whitelist" of allowed inputs)
 fn div :: a int -> b int -> int {
